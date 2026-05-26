@@ -397,8 +397,11 @@ export function sendPromptToSession(session: string, text: string): void {
     i = end
     if (i < oneLine.length) execFileSync('/bin/sleep', ['0.03'], { timeout: 1000 })
   }
-  // C-m (carriage return) instead of the Enter key-name: Enter gets swallowed
-  // by bracketed-paste mode on long messages, C-m bypasses that and submits.
+  // End any active bracketed-paste mode first (\e[201~), then C-m to submit.
+  // Plain C-m alone gets swallowed when the TUI is still in bracketed-paste
+  // mode from a previous pasted chunk; the escape sequence closes the bracket
+  // before the carriage return so the submit actually fires.
+  execFileSync(TMUX, ['send-keys', '-t', session, '-H', '1b', '5b', '32', '30', '31', '7e'], { timeout: 5000 })
   execFileSync(TMUX, ['send-keys', '-t', session, 'C-m'], { timeout: 5000 })
 
   // Post-send retry loop. The payload hint is the first chunk of oneLine
@@ -417,6 +420,7 @@ export function sendPromptToSession(session: string, text: string): void {
     }
     // action === 'retry-enter'
     try {
+      execFileSync(TMUX, ['send-keys', '-t', session, '-H', '1b', '5b', '32', '30', '31', '7e'], { timeout: 5000 })
       execFileSync(TMUX, ['send-keys', '-t', session, 'C-m'], { timeout: 5000 })
     } catch (err) {
       logger.warn({ err, session, attempt }, 'Retry-Enter send failed')

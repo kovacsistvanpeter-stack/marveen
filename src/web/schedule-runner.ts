@@ -129,7 +129,8 @@ function attemptFireTask(task: ScheduledTask, agentName: string, now: number): '
           logger.warn({ task: task.name, session }, 'Scheduled prompt still stuck after 5 Enter retries -- giving up')
           return
         }
-        execFileSync(TMUX, ['send-keys', '-t', session, 'Enter'], { timeout: 3000 })
+        execFileSync(TMUX, ['send-keys', '-t', session, '-H', '1b', '5b', '32', '30', '31', '7e'], { timeout: 3000 })
+        execFileSync(TMUX, ['send-keys', '-t', session, 'C-m'], { timeout: 3000 })
         setTimeout(() => resubmit(attempt + 1), 3000)
       } catch (err) {
         logger.warn({ err, task: task.name }, 'Post-send resubmit failed')
