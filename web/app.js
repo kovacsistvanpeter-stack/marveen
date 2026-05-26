@@ -85,6 +85,7 @@ function switchPage(pageId) {
   if (pageId === 'updates') loadUpdates()
   if (pageId === 'team') loadTeamGraph()
   if (pageId === 'tokenUsage') loadTokenUsage()
+  if (pageId === 'buffett') loadBuffett()
 }
 
 navLinks.forEach((link) => {
@@ -8370,3 +8371,167 @@ window.addEventListener('resize', () => {
   const p = new URLSearchParams(window.location.search).get('page')
   if (p) switchPage(p)
 })()
+// === Buffett Page ===
+let buffettSelectedDate = null
+
+async function loadBuffett() {
+  await Promise.all([loadBuffettRuns(), loadBuffettMemories()])
+  document.getElementById('buffettRefreshBtn').onclick = () => loadBuffett()
+}
+
+async function loadBuffettRuns() {
+  const list = document.getElementById('buffettRunsList')
+  try {
+    const res = await fetch('/api/daily-log/dates?agent=buffett')
+    const dates = await res.json()
+    if (!dates || dates.length === 0) {
+      list.innerHTML = '<div class="buffett-empty-small">Még nem volt futás</div>'
+      return
+    }
+    list.innerHTML = ''
+    for (const d of dates) {
+      const item = document.createElement('div')
+      item.className = 'buffett-run-item' + (d === buffettSelectedDate ? ' active' : '')
+      item.dataset.date = d
+      const label = new Date(d + 'T12:00:00').toLocaleDateString('hu-HU', { month: 'short', day: 'numeric', weekday: 'short' })
+      item.innerHTML = `<div class="buffett-run-date">${escapeHtml(label)}</div><div class="buffett-run-sub">${escapeHtml(d)}</div>`
+      item.addEventListener('click', () => {
+        buffettSelectedDate = d
+        document.querySelectorAll('.buffett-run-item').forEach(el => el.classList.remove('active'))
+        item.classList.add('active')
+        loadBuffettRunDetail(d)
+      })
+      list.appendChild(item)
+    }
+  } catch {
+    list.innerHTML = '<div class="buffett-empty-small">Betöltési hiba</div>'
+  }
+}
+
+async function loadBuffettRunDetail(date) {
+  const detail = document.getElementById('buffettRunDetail')
+  detail.hidden = false
+  detail.textContent = 'Betöltés...'
+  try {
+    const res = await fetch(`/api/daily-log?agent=buffett&date=${date}`)
+    const entries = await res.json()
+    if (!entries || entries.length === 0) {
+      detail.textContent = 'Nincs log erre a napra.'
+      return
+    }
+    detail.textContent = entries.map(e => e.content).join('\n\n---\n\n')
+  } catch {
+    detail.textContent = 'Betöltési hiba.'
+  }
+}
+
+function parseTickerFromMemory(mem) {
+  const content = mem.content || ''
+  const keywords = typeof mem.keywords === 'string' ? mem.keywords.split(',').map(s => s.trim()) : (mem.keywords || [])
+
+  // Try to extract action
+  let action = null
+  const actionMatch = content.match(/\baction[:\s]+([A-Za-z]+)/i) || content.match(/\b(Buy|Sell|Hold)\b/i)
+  if (actionMatch) action = actionMatch[1].toLowerCase()
+
+  // Try to extract conviction
+  let conviction = null
+  const convMatch = content.match(/conviction[:\s]+(\d)/i) || content.match(/(\d)\/5/)
+  if (convMatch) conviction = convMatch[1]
+
+  // Try to extract ticker symbol (first all-caps word, or from keywords)
+  let ticker = null
+  const tickerKw = keywords.find(k => /^[A-Z]{2,6}$/.test(k))
+  if (tickerKw) {
+    ticker = tickerKw
+  } else {
+    const capsMatch = content.match(/^([A-Z]{2,6})[\s:,]/)
+    if (capsMatch) ticker = capsMatch[1]
+  }
+
+  const snippet = content.length > 130 ? content.slice(0, 130) + '...' : content
+  const date = mem.created_label || ''
+
+  return { ticker, action, conviction, snippet, keywords, date }
+}
+
+async function loadBuffettMemories() {
+  const grid = document.getElementById('buffettTickerGrid')
+  const empty = document.getElementById('buffettTickersEmpty')
+  const statsEl = document.getElementById('buffettStats')
+  grid.innerHTML = ''
+
+  try {
+    const res = await fetch('/api/memories?agent=buffett&category=warm&limit=100')
+    const memories = await res.json()
+
+    if (!memories || memories.length === 0) {
+      empty.hidden = false
+      grid.hidden = true
+      statsEl.innerHTML = ''
+      return
+    }
+
+    empty.hidden = true
+    grid.hidden = false
+
+    // Stats
+    const buys = memories.filter(m => /\bbuy\b/i.test(m.content)).length
+    const sells = memories.filter(m => /\bsell\b/i.test(m.content)).length
+    const holds = memories.filter(m => /\bhold\b/i.test(m.content)).length
+    statsEl.innerHTML = `
+      <div class="buffett-stat"><div class="buffett-stat-label">Ticker</div><div class="buffett-stat-value">${memories.length}</div></div>
+      <div class="buffett-stat"><div class="buffett-stat-label">Buy</div><div class="buffett-stat-value" style="color:var(--success)">${buys}</div></div>
+      <div class="buffett-stat"><div class="buffett-stat-label">Hold</div><div class="buffett-stat-value" style="color:var(--info)">${holds}</div></div>
+      <div class="buffett-stat"><div class="buffett-stat-label">Sell</div><div class="buffett-stat-value" style="color:var(--danger)">${sells}</div></div>
+    `
+
+    for (const mem of memories) {
+      const { ticker, action, conviction, snippet, keywords, date } = parseTickerFromMemory(mem)
+      const actionClass = action === 'buy' ? 'action-buy' : action === 'sell' ? 'action-sell' : 'action-hold'
+      const badgeClass = action === 'buy' ? 'buy' : action === 'sell' ? 'sell' : 'hold'
+      const badgeLabel = action ? action.charAt(0).toUpperCase() + action.slice(1) : 'Hold'
+      const stars = conviction ? '★'.repeat(Number(conviction)) + '☆'.repeat(5 - Number(conviction)) : ''
+      const kwHtml = keywords.slice(0, 5).map(k => `<span class="buffett-kw">${escapeHtml(k)}</span>`).join('')
+
+      const card = document.createElement('div')
+      card.className = `buffett-ticker-card ${actionClass}`
+      card.innerHTML = `
+        <div class="buffett-card-header">
+          <span class="buffett-ticker-symbol">${escapeHtml(ticker || '???')}</span>
+          <span class="buffett-action-badge ${badgeClass}">${badgeLabel}</span>
+          ${stars ? `<span class="buffett-conviction" title="Conviction">${escapeHtml(stars)}</span>` : ''}
+        </div>
+        <div class="buffett-card-snippet">${escapeHtml(snippet)}</div>
+        ${kwHtml ? `<div class="buffett-card-keywords">${kwHtml}</div>` : ''}
+        ${date ? `<div class="buffett-card-date">${escapeHtml(date)}</div>` : ''}
+      `
+      card.addEventListener('click', () => showBuffettTickerDetail(mem))
+      grid.appendChild(card)
+    }
+  } catch (err) {
+    empty.hidden = false
+    grid.hidden = true
+    console.error('Buffett ticker betöltési hiba:', err)
+  }
+}
+
+const buffettTickerModalOverlay = document.getElementById('buffettTickerModal')
+document.getElementById('buffettModalClose').addEventListener('click', () => closeModal(buffettTickerModalOverlay))
+buffettTickerModalOverlay.addEventListener('click', (e) => { if (e.target === buffettTickerModalOverlay) closeModal(buffettTickerModalOverlay) })
+
+function showBuffettTickerDetail(mem) {
+  const { ticker, action, conviction, keywords } = parseTickerFromMemory(mem)
+  document.getElementById('buffettModalTitle').textContent = ticker ? `${ticker} – részletek` : 'Ticker részletek'
+  const kwHtml = keywords.map(k => `<span class="mem-keyword-tag">${escapeHtml(k)}</span>`).join('')
+  document.getElementById('buffettModalBody').innerHTML = `
+    <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center;">
+      ${action ? `<span class="buffett-action-badge ${action}">${action.charAt(0).toUpperCase() + action.slice(1)}</span>` : ''}
+      ${conviction ? `<span style="color:var(--text-muted);font-size:14px">${'★'.repeat(Number(conviction))}${'☆'.repeat(5 - Number(conviction))} (${conviction}/5)</span>` : ''}
+    </div>
+    <pre style="white-space:pre-wrap;font-size:13px;line-height:1.6;font-family:inherit;background:var(--bg-input);border-radius:var(--radius-sm);padding:12px">${escapeHtml(mem.content)}</pre>
+    ${kwHtml ? `<div class="mem-keywords" style="margin-top:10px">${kwHtml}</div>` : ''}
+    <div style="margin-top:8px;font-size:12px;color:var(--text-muted)">${escapeHtml(mem.created_label || '')}</div>
+  `
+  openModal(buffettTickerModalOverlay)
+}

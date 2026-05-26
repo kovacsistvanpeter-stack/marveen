@@ -4893,4 +4893,123 @@ main {
 @media (max-width: 600px) {
   .auth-mode-cards { gap: 6px; }
   .auth-mode-card { padding: 10px 12px; gap: 10px; }
+/* === Buffett Page === */
+.buffett-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.buffett-stat {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+}
+.buffett-stat-label { font-size: 11px; color: var(--text-muted); font-weight: 500; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .04em; }
+.buffett-stat-value { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+.buffett-stat-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+.buffett-layout {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+.buffett-runs-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  overflow: hidden;
+}
+.buffett-panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-muted);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.buffett-runs-list { padding: 6px 0; }
+.buffett-run-item {
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: background var(--transition), border-color var(--transition);
+}
+.buffett-run-item:hover { background: var(--bg-card-hover); }
+.buffett-run-item.active { border-left-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.buffett-run-date { font-weight: 500; }
+.buffett-run-sub { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+.buffett-empty-small { padding: 16px 14px; font-size: 13px; color: var(--text-muted); }
+
+.buffett-main-panel { min-width: 0; }
+.buffett-run-detail {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  padding: 16px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  white-space: pre-wrap;
+  line-height: 1.6;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.buffett-ticker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.buffett-ticker-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: border-color var(--transition), box-shadow var(--transition);
+  border-left: 3px solid var(--border);
+}
+.buffett-ticker-card:hover { border-color: var(--accent); box-shadow: var(--shadow-sm); }
+.buffett-ticker-card.action-buy { border-left-color: var(--success); }
+.buffett-ticker-card.action-sell { border-left-color: var(--danger); }
+.buffett-ticker-card.action-hold { border-left-color: var(--info); }
+.buffett-card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.buffett-ticker-symbol { font-size: 15px; font-weight: 700; letter-spacing: .02em; }
+.buffett-action-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 99px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.buffett-action-badge.buy { background: var(--success-soft); color: var(--success); }
+.buffett-action-badge.sell { background: var(--danger-soft); color: var(--danger); }
+.buffett-action-badge.hold { background: var(--info-soft); color: var(--info); }
+.buffett-conviction { margin-left: auto; font-size: 12px; color: var(--text-muted); }
+.buffett-card-snippet { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+.buffett-card-keywords { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.buffett-kw { font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--bg-input); color: var(--text-muted); }
+.buffett-card-date { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+
+.buffett-empty {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+}
+
+@media (max-width: 768px) {
+  .buffett-layout { grid-template-columns: 1fr; }
+  .buffett-runs-panel { order: 1; }
+  .buffett-main-panel { order: 0; }
 }

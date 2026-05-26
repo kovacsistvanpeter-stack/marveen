@@ -76,6 +76,10 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
         <span class="sb-label">Token Monitor</span>
       </a>
+      <a href="#" class="sb-link" data-page="buffett">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        <span class="sb-label">Buffett</span>
+      </a>
       <a href="#" class="sb-link" data-page="updates" id="updatesNavLink">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
         <span class="sb-label">Frissítések</span>
@@ -1983,6 +1987,55 @@
           <span class="btn-loading" hidden><span class="spinner"></span></span>
         </button>
       </div>
+    </div>
+  </div>
+
+    <!-- === Buffett Page === -->
+    <div class="page" id="buffettPage" hidden>
+      <div class="page-header">
+        <div class="page-header-row">
+          <div>
+            <h1>Buffett portfólió</h1>
+            <p class="subtitle">Heti portfólió-elemzések és ticker-szintű memóriák</p>
+          </div>
+          <button class="btn-primary btn-compact" id="buffettRefreshBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+            </svg>
+            Frissítés
+          </button>
+        </div>
+      </div>
+      <div class="buffett-stats" id="buffettStats"></div>
+      <div class="buffett-layout">
+        <div class="buffett-runs-panel">
+          <div class="buffett-panel-title">Heti futások</div>
+          <div id="buffettRunsList" class="buffett-runs-list">
+            <div class="buffett-empty-small">Még nem volt futás</div>
+          </div>
+        </div>
+        <div class="buffett-main-panel">
+          <div id="buffettRunDetail" class="buffett-run-detail" hidden></div>
+          <div class="buffett-panel-title" id="buffettTickersTitle">Ticker memóriák</div>
+          <div id="buffettTickerGrid" class="buffett-ticker-grid"></div>
+          <div id="buffettTickersEmpty" class="buffett-empty">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.3">
+              <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+            </svg>
+            <p>A Buffett pipeline még nem futott le. Szombat 01:00-kor indul az első futás.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  <!-- === Buffett Ticker Detail Modal === -->
+  <div class="modal-overlay" id="buffettTickerModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="buffettModalTitle">Ticker részletek</h2>
+        <button class="modal-close" id="buffettModalClose">&times;</button>
+      </div>
+      <div class="modal-body" id="buffettModalBody"></div>
     </div>
   </div>
 
