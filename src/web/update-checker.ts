@@ -13,6 +13,7 @@ export interface UpdateStatus {
   current: string
   latest: string
   behind: number
+  aheadBy: number
   commits: UpdateCommit[]
   remote: string
   lastChecked: number
@@ -23,6 +24,7 @@ let updateStatusCache: UpdateStatus = {
   current: '',
   latest: '',
   behind: 0,
+  aheadBy: 0,
   commits: [],
   remote: 'Szotasz/marveen',
   lastChecked: 0,
@@ -57,6 +59,7 @@ export async function refreshUpdateStatus(): Promise<UpdateStatus> {
     current,
     latest: '',
     behind: 0,
+    aheadBy: 0,
     commits: [],
     remote,
     lastChecked: Date.now(),
@@ -101,8 +104,72 @@ export async function refreshUpdateStatus(): Promise<UpdateStatus> {
         date: c.commit.author?.date || '',
       }))
     } else if (cmpRes.status === 404) {
-      // Local HEAD not on the remote (detached local commit / different base).
-      status.error = 'Local HEAD not found on GitHub -- different fork or unpushed commits?'
+      // Local HEAD isn't on GitHub (unpushed commits). Use local git to compute
+      // the real behind/ahead counts relative to origin/main, then add any
+      // additional commits GitHub has beyond origin/main (when origin/main is stale).
+      // Total behind = (HEAD..origin/main locally) + (origin/main..GitHub-latest via API).
+      try {
+        const originMain = execFileSync(
+          '/usr/bin/git', ['rev-parse', 'origin/main'],
+          { cwd: PROJECT_ROOT, timeout: 3000, encoding: 'utf-8' },
+        ).trim()
+
+        const behindLocalStr = execFileSync(
+          '/usr/bin/git', ['rev-list', '--count', 'HEAD..origin/main'],
+          { cwd: PROJECT_ROOT, timeout: 3000, encoding: 'utf-8' },
+        ).trim()
+        const behindLocal = parseInt(behindLocalStr, 10) || 0
+
+        const aheadStr = execFileSync(
+          '/usr/bin/git', ['rev-list', '--count', 'origin/main..HEAD'],
+          { cwd: PROJECT_ROOT, timeout: 3000, encoding: 'utf-8' },
+        ).trim()
+        status.aheadBy = parseInt(aheadStr, 10) || 0
+
+        // Get local behind commits from git log (newest first)
+        const localLogRaw = execFileSync(
+          '/usr/bin/git',
+          ['log', '--format=%H\t%s\t%an\t%aI', 'HEAD..origin/main'],
+          { cwd: PROJECT_ROOT, timeout: 5000, encoding: 'utf-8' },
+        ).trim()
+        const localCommits: UpdateCommit[] = localLogRaw
+          ? localLogRaw.split('\n').map(line => {
+              const [sha = '', message = '', author = '', date = ''] = line.split('\t')
+              return { sha, short: sha.slice(0, 7), message, author, date }
+            })
+          : []
+
+        // If origin/main is stale (behind GitHub latest), add the remote delta
+        let behindRemote = 0
+        const remoteCommits: UpdateCommit[] = []
+        if (originMain && originMain !== status.latest) {
+          const cmp2Res = await fetch(
+            `https://api.github.com/repos/${remote}/compare/${originMain}...${status.latest}`,
+            { headers: { 'Accept': 'application/vnd.github+json', 'User-Agent': 'marveen-update-check' } },
+          )
+          if (cmp2Res.ok) {
+            const cmp2 = await cmp2Res.json() as {
+              ahead_by?: number
+              commits?: { sha: string; commit: { message: string; author: { name: string; date: string } } }[]
+            }
+            behindRemote = cmp2.ahead_by ?? 0
+            const raw2 = (cmp2.commits ?? []).slice().reverse()
+            remoteCommits.push(...raw2.map(c => ({
+              sha: c.sha,
+              short: c.sha.slice(0, 7),
+              message: (c.commit.message || '').split('\n')[0],
+              author: c.commit.author?.name || '',
+              date: c.commit.author?.date || '',
+            })))
+          }
+        }
+
+        status.behind = behindLocal + behindRemote
+        status.commits = [...remoteCommits, ...localCommits]
+      } catch {
+        // git rev-parse origin/main failed (no remote fetched yet) -- surface original error.
+        status.error = 'Local HEAD not found on GitHub -- different fork or unpushed commits?'
+      }
     }
   } catch (err) {
     status.error = err instanceof Error ? err.message : String(err)

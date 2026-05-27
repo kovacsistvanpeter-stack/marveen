@@ -6945,17 +6945,20 @@ async function loadUpdates() {
     renderUpdatesBadge(data)
     const cur = (data.current || '').slice(0, 7) || '–'
     const lat = (data.latest || '').slice(0, 7) || '–'
+    const aheadNote = (data.aheadBy > 0)
+      ? `<br><span style="color:var(--text-muted);font-size:12px">⚠ ${data.aheadBy} lokális, nem pusholt commit van – frissítés előtt érdemes pusholni vagy rebase-elni.</span>`
+      : ''
     if (data.error) {
       summary.className = 'updates-summary error'
       summary.innerHTML = `<strong>Nem sikerült ellenőrizni:</strong> ${escapeHtmlUpdates(data.error)}<br>Jelenlegi: <code>${cur}</code>`
       applyBtn.hidden = true
     } else if (data.behind === 0) {
       summary.className = 'updates-summary up-to-date'
-      summary.innerHTML = `<strong>A legfrissebb verzión vagy</strong> (<code>${cur}</code>). Nincs teendő.`
+      summary.innerHTML = `<strong>A legfrissebb verzión vagy</strong> (<code>${cur}</code>). Nincs teendő.${aheadNote}`
       applyBtn.hidden = true
     } else {
       summary.className = 'updates-summary behind'
-      summary.innerHTML = `<strong>${data.behind} új commit elérhető</strong> a <code>${escapeHtmlUpdates(data.remote)}</code> repón.<br>Jelenlegi: <code>${cur}</code> → Legfrissebb: <code>${lat}</code>`
+      summary.innerHTML = `<strong>${data.behind} új commit elérhető</strong> a <code>${escapeHtmlUpdates(data.remote)}</code> repón.<br>Jelenlegi: <code>${cur}</code> → Legfrissebb: <code>${lat}</code>${aheadNote}`
       applyBtn.hidden = false
     }
     if (data.commits && data.commits.length) {
