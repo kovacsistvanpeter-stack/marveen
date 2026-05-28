@@ -8449,7 +8449,7 @@ async function loadBuffettPortfolio() {
   const container = document.getElementById('buffettPortfolioContent')
   const tsEl = document.getElementById('buffettPortfolioRefreshedAt')
   try {
-    const res = await fetch('/api/buffett/portfolio', { headers: { Authorization: `Bearer ${getToken()}` } })
+    const res = await fetch('/api/buffett/portfolio')
     const data = await res.json()
 
     if (data._empty || (!data.portfolios?.length && !data.passive?.length)) {
