@@ -5,6 +5,7 @@ set -e
 
 BOLD='\033[1m'
 GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
 RED='\033[0;31m'
 DIM='\033[2m'
 NC='\033[0m'
@@ -148,6 +149,19 @@ OLD_VERSION=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 # Pull latest
 echo -e "  Letoltes..."
+git fetch origin main
+LOCAL=$(git rev-parse HEAD 2>/dev/null || echo "")
+REMOTE=$(git rev-parse origin/main 2>/dev/null || echo "")
+BASE=$(git merge-base HEAD origin/main 2>/dev/null || echo "")
+if [ "$LOCAL" = "$REMOTE" ]; then
+  echo -e "  ${GREEN}✓${NC} Mar a legfrissebb verzion vagy ($OLD_VERSION)"
+  exit 0
+elif [ -n "$BASE" ] && [ "$LOCAL" != "$BASE" ] && [ "$REMOTE" != "$BASE" ]; then
+  echo -e "  ${YELLOW}⚠${NC} A local branch divergalt az origin/main-tol -- frissites kihagyva."
+  echo -e "       Helyi commit-ok vannak amelyek nem szerepelnek az upstream-ben."
+  echo -e "       Kezi megoldas: git log --oneline origin/main..HEAD"
+  exit 0
+fi
 git pull --ff-only origin main
 NEW_VERSION=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 

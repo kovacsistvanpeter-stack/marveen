@@ -90,8 +90,20 @@ function hasChannelPluginAlive(claudePid: number, providerType: ChannelProviderT
       seen.add(p)
       const cmd = cmdOf.get(p) || ''
       if (providerType === 'telegram') {
-        if (cmd.includes('/telegram/') && cmd.includes('bun')) return true
-        if (/\bbun\b/.test(cmd) && cmd.includes('server.ts')) return true
+        if ((cmd.includes('/telegram/') && cmd.includes('bun')) ||
+            (/\bbun\b/.test(cmd) && cmd.includes('server.ts'))) {
+          const sd = agentName ? channelStateDir(providerType, agentDir(agentName)) : channelStateDir(providerType)
+          const pollingAtPath = join(sd, 'bot.polling-at')
+          if (existsSync(pollingAtPath)) {
+            const ts = parseInt(readFileSync(pollingAtPath, 'utf-8').trim(), 10)
+            if (Date.now() - ts > 120_000) {
+              logger.warn({ agentName, providerType, staleSecs: Math.round((Date.now() - ts) / 1000) },
+                'Telegram plugin process alive but polling-at stale — treating as down')
+              return false
+            }
+          }
+          return true
+        }
       } else if (providerType === 'discord') {
         if (cmd.includes('discord') && (cmd.includes('node') || cmd.includes('bun'))) return true
       } else {
