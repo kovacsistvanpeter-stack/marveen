@@ -8406,15 +8406,19 @@ function _buildPortfolioTable(positions, currency) {
   if (!positions || positions.length === 0) {
     return '<div class="buffett-empty-small">Nincs nyitott pozíció</div>'
   }
-  const rows = positions.map(p => `
+  const rows = positions.map(p => {
+    const priceVal = p.current_price ?? p.market_value
+    const priceTitle = p.current_price == null && p.market_value != null ? ' title="Piaci érték (ár/db n.a.)"' : ''
+    return `
     <tr>
       <td><span class="bp-ticker">${escapeHtml(p.ticker || '--')}</span></td>
       <td><span class="bp-name">${escapeHtml(p.name || '')}</span></td>
-      <td>${_fmtPrice(p.current_price, p.currency || currency)}</td>
+      <td${priceTitle}>${_fmtPrice(priceVal, p.currency || currency)}</td>
       <td>${_fmtPrice(p.cost_basis, p.currency || currency)}</td>
       <td>${_fmtPnl(p.unrealized_pnl, p.unrealized_pnl_pct)}</td>
       <td>${_fmtYield(p.dividend_yield_pct)}</td>
-    </tr>`).join('')
+    </tr>`
+  }).join('')
   return `<table class="buffett-portfolio-table">
     <thead><tr>
       <th>Ticker</th><th>Név</th><th>Ár</th><th>Vételi ár</th><th>P&amp;L</th><th>Osztalék</th>
