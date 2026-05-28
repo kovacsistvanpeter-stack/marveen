@@ -8378,7 +8378,7 @@ window.addEventListener('resize', () => {
 let buffettSelectedDate = null
 
 async function loadBuffett() {
-  await Promise.all([loadBuffettRuns(), loadBuffettMemories(), loadBuffettPortfolio()])
+  await Promise.allSettled([loadBuffettRuns(), loadBuffettMemories(), loadBuffettPortfolio()])
   document.getElementById('buffettRefreshBtn').onclick = () => loadBuffett()
 }
 
