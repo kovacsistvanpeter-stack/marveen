@@ -8378,8 +8378,108 @@ window.addEventListener('resize', () => {
 let buffettSelectedDate = null
 
 async function loadBuffett() {
-  await Promise.all([loadBuffettRuns(), loadBuffettMemories()])
+  await Promise.all([loadBuffettRuns(), loadBuffettMemories(), loadBuffettPortfolio()])
   document.getElementById('buffettRefreshBtn').onclick = () => loadBuffett()
+}
+
+function _fmtPrice(v, currency) {
+  if (v == null) return '<span class="bp-null">--</span>'
+  const sym = currency === 'HUF' ? '' : (currency === 'EUR' ? '€' : '$')
+  const suffix = currency === 'HUF' ? ' Ft' : ''
+  return escapeHtml(sym + Number(v).toLocaleString('hu-HU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + suffix)
+}
+
+function _fmtPnl(pnl, pct) {
+  if (pnl == null) return '<span class="bp-null">--</span>'
+  const cls = pnl >= 0 ? 'bp-pnl-pos' : 'bp-pnl-neg'
+  const sign = pnl >= 0 ? '+' : ''
+  const pctStr = pct != null ? ` (${sign}${Number(pct).toFixed(1)}%)` : ''
+  return `<span class="${cls}">${sign}${Number(pnl).toLocaleString('hu-HU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${pctStr}</span>`
+}
+
+function _fmtYield(v) {
+  if (v == null) return '<span class="bp-null">--</span>'
+  return escapeHtml(Number(v).toFixed(2) + '%')
+}
+
+function _buildPortfolioTable(positions, currency) {
+  if (!positions || positions.length === 0) {
+    return '<div class="buffett-empty-small">Nincs nyitott pozíció</div>'
+  }
+  const rows = positions.map(p => `
+    <tr>
+      <td><span class="bp-ticker">${escapeHtml(p.ticker || '--')}</span></td>
+      <td><span class="bp-name">${escapeHtml(p.name || '')}</span></td>
+      <td>${_fmtPrice(p.current_price, p.currency || currency)}</td>
+      <td>${_fmtPrice(p.cost_basis, p.currency || currency)}</td>
+      <td>${_fmtPnl(p.unrealized_pnl, p.unrealized_pnl_pct)}</td>
+      <td>${_fmtYield(p.dividend_yield_pct)}</td>
+    </tr>`).join('')
+  return `<table class="buffett-portfolio-table">
+    <thead><tr>
+      <th>Ticker</th><th>Név</th><th>Ár</th><th>Vételi ár</th><th>P&amp;L</th><th>Osztalék</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`
+}
+
+function _buildPassiveTable(items) {
+  if (!items || items.length === 0) return ''
+  const rows = items.map(p => `
+    <tr>
+      <td>${escapeHtml(p.name || '--')}</td>
+      <td>${escapeHtml(p.subcategory || p.category || '')}</td>
+      <td>${_fmtPrice(p.value_native, p.currency)}</td>
+      <td>${escapeHtml(p.currency || '')}</td>
+      <td>${p.annual_income_native != null ? _fmtPrice(p.annual_income_native, p.currency) : '<span class="bp-null">--</span>'}</td>
+    </tr>`).join('')
+  return `<table class="buffett-passive-table">
+    <thead><tr>
+      <th>Tétel</th><th>Típus</th><th>Érték</th><th>Deviza</th><th>Éves bevétel</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`
+}
+
+async function loadBuffettPortfolio() {
+  const container = document.getElementById('buffettPortfolioContent')
+  const tsEl = document.getElementById('buffettPortfolioRefreshedAt')
+  try {
+    const res = await fetch('/api/buffett/portfolio', { headers: { Authorization: `Bearer ${getToken()}` } })
+    const data = await res.json()
+
+    if (data._empty || (!data.portfolios?.length && !data.passive?.length)) {
+      container.innerHTML = '<div class="buffett-empty-small">Még nem volt napi refresh. Hajnali 6:00-kor frissül.</div>'
+      tsEl.textContent = ''
+      return
+    }
+
+    if (data.refreshed_at) {
+      const d = new Date(data.refreshed_at)
+      tsEl.textContent = 'Frissítve: ' + d.toLocaleString('hu-HU', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    }
+
+    let html = ''
+
+    for (const portfolio of (data.portfolios || [])) {
+      html += `<div class="buffett-broker-block">
+        <div class="buffett-broker-name">${escapeHtml(portfolio.name)}</div>
+        ${_buildPortfolioTable(portfolio.positions, null)}
+      </div>`
+    }
+
+    if (data.passive?.length) {
+      html += `<div class="buffett-passive-block">
+        <div class="buffett-broker-name">Passzív statikus</div>
+        ${_buildPassiveTable(data.passive)}
+      </div>`
+    }
+
+    container.innerHTML = html
+  } catch (err) {
+    container.innerHTML = '<div class="buffett-empty-small">Betöltési hiba</div>'
+    console.error('Buffett portfolio betöltési hiba:', err)
+  }
 }
 
 async function loadBuffettRuns() {
