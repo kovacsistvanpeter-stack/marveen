@@ -170,6 +170,11 @@ const AGENT_RESTART_GRACE_MS = 90_000
 // the plugin only after a slow session load). Never restart a process younger
 // than this on a "plugin down" reading, or the watchdog crash-loops it.
 const AGENT_STARTUP_GRACE_MS = 180_000
+// Require the plugin to be continuously down for this long before triggering a
+// full agent restart. Two consecutive 60s check cycles = 120s. This prevents a
+// single transient blip (e.g. context compaction resetting MCP) from immediately
+// restarting the agent and racing the Telegram getUpdates token.
+const AGENT_DOWN_RESTART_THRESHOLD_MS = 120_000
 const PLUGIN_ALERT_DEDUP_MS = 30 * 60 * 1000
 
 // Per-session tracking for the wedged thinking-block error (a Claude
@@ -456,7 +461,16 @@ export function startChannelPluginMonitor(): NodeJS.Timeout {
       if (t.isMarveen) {
         if (shouldEscalateMarveenDown()) handleMarveenDown()
       } else {
-        if (!agentDownSince.has(t.session)) agentDownSince.set(t.session, Date.now())
+        if (!agentDownSince.has(t.session)) {
+          agentDownSince.set(t.session, Date.now())
+          logger.info({ session: t.session, provider: t.provider }, 'Agent channel plugin down -- waiting for threshold before restart')
+          continue
+        }
+        const downFor = Date.now() - agentDownSince.get(t.session)!
+        if (downFor < AGENT_DOWN_RESTART_THRESHOLD_MS) {
+          logger.debug({ session: t.session, downForMs: downFor }, 'Agent channel plugin down -- within grace threshold, skipping restart')
+          continue
+        }
         const lastRestart = agentLastRestart.get(t.agentName!)
         const restart = shouldAutoRestartDownAgent({
           processAgeMs: getProcessAgeMs(claudePid),
@@ -475,7 +489,7 @@ export function startChannelPluginMonitor(): NodeJS.Timeout {
           logger.warn({ agent: t.agentName, provider: agentProvider }, 'Agent has no channel token in state dir -- skipping restart to avoid token conflict')
           continue
         }
-        logger.warn({ agent: t.agentName, provider: t.provider }, 'Agent channel plugin down -- auto-restarting')
+        logger.warn({ agent: t.agentName, provider: t.provider, downForMs: downFor }, 'Agent channel plugin down -- auto-restarting')
         try {
           stopAgentProcess(t.agentName!)
           execSync('sleep 2', { timeout: 4000 })
