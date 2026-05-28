@@ -61,7 +61,10 @@ export function serveFile(res: http.ServerResponse, filePath: string): void {
   try {
     const data = readFileSync(filePath)
     const ext = extname(filePath)
-    res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' })
+    res.writeHead(200, {
+      'Content-Type': MIME[ext] || 'application/octet-stream',
+      'Cache-Control': 'no-cache',
+    })
     res.end(data)
   } catch {
     res.writeHead(404)

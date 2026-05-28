@@ -5053,7 +5053,7 @@ main {
   text-transform: uppercase;
   letter-spacing: .04em;
   padding: 5px 8px;
-  border-bottom: 1px solid var(--border);
+  border: 1px solid var(--border);
   white-space: nowrap;
 }
 
@@ -5065,7 +5065,7 @@ main {
 .buffett-portfolio-table td {
   padding: 6px 8px;
   text-align: right;
-  border-bottom: 1px solid var(--border);
+  border: 1px solid var(--border);
   vertical-align: middle;
   white-space: nowrap;
 }
@@ -5075,12 +5075,46 @@ main {
   text-align: left;
 }
 
-.buffett-portfolio-table tr:last-child td {
-  border-bottom: none;
-}
-
 .buffett-portfolio-table tr:hover td {
   background: var(--bg-card-hover);
+}
+
+.bp-qty { color: var(--text-muted); font-size: 12px; }
+
+.bp-totals-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  align-items: center;
+  padding: 6px 8px;
+  margin-top: 4px;
+  font-size: 12px;
+  border-top: 2px solid var(--border);
+  background: var(--bg-card);
+}
+.bp-total-label {
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+.bp-total-item {
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+.bp-total-cur {
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-right: 2px;
+}
+.bp-total-huf {
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+  margin-left: auto;
 }
 
 .bp-ticker { font-weight: 700; letter-spacing: .02em; font-size: 13px; }
@@ -5138,5 +5172,7 @@ main {
   .buffett-main-panel { order: 0; }
   .bp-name { max-width: 100px; }
   .buffett-portfolio-table th:nth-child(5),
-  .buffett-portfolio-table td:nth-child(5) { display: none; }
+  .buffett-portfolio-table td:nth-child(5),
+  .buffett-portfolio-table th:nth-child(7),
+  .buffett-portfolio-table td:nth-child(7) { display: none; }
 }
