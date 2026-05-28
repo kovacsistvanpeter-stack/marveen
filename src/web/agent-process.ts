@@ -316,13 +316,13 @@ function dismissResumeSummaryModalIfPresent(session: string): void {
 // recovery typically lands on the first or second extra Enter); a
 // stuck-after-two-retries pane gets a logged give-up so the operator
 // can intervene rather than the loop spinning indefinitely.
-const SUBMIT_RETRY_MAX_ATTEMPTS = 2
+const SUBMIT_RETRY_MAX_ATTEMPTS = 4
 // Wait between sending an Enter and re-capturing the pane. Long enough
 // for tmux to flush the keystroke into the Claude Code TUI and for
 // the TUI to either transition to busy (turn started) or stay idle
 // with the parked text (still stuck). Empirically 300ms is past the
 // frame-render gap detectPaneState already guards against.
-const SUBMIT_RETRY_POLL_MS = '0.3'
+const SUBMIT_RETRY_POLL_MS = '0.5'
 
 // Buffer-clear (Ctrl-U) used pre-flight when shouldClearTruncatedPreamble
 // flags a stale preamble. Sent as a single key name (no `-l` literal
@@ -375,8 +375,16 @@ export function sendPromptToSession(session: string, text: string): void {
     logger.warn({ err, session }, 'Pre-send capture-pane failed; skipping truncated-preamble check')
   }
 
-  const oneLine = text.replace(/\r?\n/g, ' ')
+  // Replace ASCII '@' with fullwidth '＠' (U+FF20) to prevent the Claude Code
+  // TUI from opening MCP-resource autocomplete mid-paste, which would corrupt
+  // the message text before C-m can submit it.
+  const oneLine = text.replace(/\r?\n/g, ' ').replace(/@/g, '＠')
   const CHUNK = 80
+  // Dismiss any open autocomplete dropdown before we start pasting. If an
+  // earlier interaction left a dropdown open, the first chunk would land in
+  // the dropdown selector instead of the prompt buffer.
+  execFileSync(TMUX, ['send-keys', '-t', session, 'Escape'], { timeout: 2000 })
+  execFileSync('/bin/sleep', ['0.05'], { timeout: 1000 })
   // tmux send-keys doesn't support `--` option-terminator, so a chunk that
   // starts with '-' parses as a flag ("command send-keys: unknown flag -s"
   // on Hungarian suffixes like -szal/-vel/-ban). Slide the boundary up to a
