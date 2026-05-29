@@ -182,6 +182,16 @@ const AGENT_RESTART_GRACE_MS = 90_000
 // the plugin only after a slow session load). Never restart a process younger
 // than this on a "plugin down" reading, or the watchdog crash-loops it.
 const AGENT_STARTUP_GRACE_MS = 180_000
+
+// Dead-session watchdog: tracks agents whose tmux sessions are completely gone
+// (distinct from plugin-down, which the above handles for running sessions).
+const agentSessionDeadSince: Map<string, number> = new Map()
+interface RestartBucket { count: number; windowStart: number; lastAlertAt: number }
+const agentSessionRestartBucket: Map<string, RestartBucket> = new Map()
+const SESSION_DEAD_CONFIRM_MS = 120_000  // 2 consecutive checks before restart
+const SESSION_MAX_RESTARTS = 3
+const SESSION_RESTART_WINDOW_MS = 15 * 60 * 1000
+const SESSION_ALERT_DEDUP_MS = 30 * 60 * 1000
 // Require the plugin to be continuously down for this long before triggering a
 // full agent restart. Two consecutive 60s check cycles = 120s. This prevents a
 // single transient blip (e.g. context compaction resetting MCP) from immediately
@@ -511,6 +521,58 @@ export function startChannelPluginMonitor(): NodeJS.Timeout {
         } catch (err) {
           logger.error({ err, agent: t.agentName }, 'Failed to auto-restart agent after channel plugin down')
         }
+      }
+    }
+
+    // Dead-session watchdog: restart channel agents whose tmux sessions are completely gone.
+    // channel-monitor only checks isAgentRunning() agents above, so this handles the gap
+    // where a session exits entirely (not just the plugin dying under a live session).
+    // startAgentProcess() already dismisses the Resume/Survey modals after 8s.
+    for (const a of listAgentNames()) {
+      if (a === MAIN_AGENT_ID) continue  // never touch the main channels session
+      if (!agentHasChannel(a)) continue
+      if (isAgentRunning(a)) {
+        agentSessionDeadSince.delete(a)
+        continue
+      }
+      // Session dead. Require two consecutive missed checks before acting.
+      const now = Date.now()
+      if (!agentSessionDeadSince.has(a)) {
+        agentSessionDeadSince.set(a, now)
+        logger.info({ agent: a }, 'Agent session dead -- waiting for confirm threshold before restart')
+        continue
+      }
+      const deadFor = now - agentSessionDeadSince.get(a)!
+      if (deadFor < SESSION_DEAD_CONFIRM_MS) continue
+
+      const lastRestart = agentLastRestart.get(a)
+      if (lastRestart && now - lastRestart < AGENT_RESTART_GRACE_MS) continue
+
+      // Check restart budget (max 3 per 15 min window)
+      let bucket = agentSessionRestartBucket.get(a)
+      if (!bucket || now - bucket.windowStart > SESSION_RESTART_WINDOW_MS) {
+        bucket = { count: 0, windowStart: now, lastAlertAt: 0 }
+      }
+      if (bucket.count >= SESSION_MAX_RESTARTS) {
+        if (now - bucket.lastAlertAt > SESSION_ALERT_DEDUP_MS) {
+          bucket.lastAlertAt = now
+          agentSessionRestartBucket.set(a, bucket)
+          sendAlert(`⚠️ ${a} agent ${SESSION_MAX_RESTARTS}x ujraindult ${Math.round(SESSION_RESTART_WINDOW_MS / 60000)} percen belul -- folyamatosan elhal. Kezzel nezd meg: \`tmux new-session -d -s agent-${a}\` es nezd a logokat.`)
+          logger.error({ agent: a }, 'Agent session dead -- max restart budget exhausted, alerting')
+        }
+        continue
+      }
+
+      bucket.count++
+      agentSessionRestartBucket.set(a, bucket)
+      agentSessionDeadSince.delete(a)
+      logger.warn({ agent: a, restartAttempt: bucket.count, maxRestarts: SESSION_MAX_RESTARTS }, 'Agent session dead -- auto-restarting')
+      try {
+        startAgentProcess(a)
+        agentLastRestart.set(a, now)
+        logger.info({ agent: a }, 'Agent session restarted (dead-session watchdog)')
+      } catch (err) {
+        logger.error({ err, agent: a }, 'Dead-session watchdog restart failed')
       }
     }
   }
