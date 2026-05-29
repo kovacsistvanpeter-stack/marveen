@@ -8420,16 +8420,19 @@ function _buildPortfolioTable(positions, currency, isLightyear) {
       ? escapeHtml(Number(p.quantity).toLocaleString('hu-HU', { maximumFractionDigits: 4 }))
       : '<span class="bp-null">--</span>'
     const pnl = p.unrealized_pnl ?? 0
-    const rowClass = pnl > 0 ? 'bp-row-profit' : pnl < 0 ? 'bp-row-loss' : ''
+    const isCopy = !!p.is_copy_trade
+    const rowClass = isCopy ? 'bp-row-copy' : (pnl > 0 ? 'bp-row-profit' : pnl < 0 ? 'bp-row-loss' : '')
+    const closedNote = isCopy && p.copy_closed_profit != null
+      ? `<span class="bp-copy-closed"> +${_fmtPrice(p.copy_closed_profit, p.currency || currency)} zárt</span>` : ''
     return `
     <tr class="${rowClass}">
-      <td><span class="bp-ticker">${escapeHtml(p.ticker || '--')}</span></td>
+      <td><span class="bp-ticker">${escapeHtml(p.ticker || '--')}</span>${closedNote}</td>
       <td><span class="bp-name">${escapeHtml(p.name || '')}</span></td>
       <td>${_fmtPrice(curVal, p.currency || currency)}</td>
-      <td>${_fmtPrice(costPos, p.currency || currency)}</td>
-      <td class="bp-qty">${qtyCell}</td>
+      <td>${isCopy ? '<span class="bp-null">--</span>' : _fmtPrice(costPos, p.currency || currency)}</td>
+      <td class="bp-qty">${isCopy ? (p.copy_open_positions != null ? p.copy_open_positions + ' pos' : '<span class="bp-null">--</span>') : qtyCell}</td>
       <td>${_fmtPnl(p.unrealized_pnl, p.unrealized_pnl_pct)}</td>
-      <td>${divCell}</td>
+      <td>${isCopy ? '<span class="bp-null">--</span>' : divCell}</td>
     </tr>`
   }).join('')
   return `<table class="buffett-portfolio-table">
@@ -8446,7 +8449,10 @@ function _buildTotalsBar(totals) {
   const byCur = totals.by_currency || {}
   const curParts = Object.entries(byCur)
     .filter(([, v]) => v.value_current !== 0 || v.pnl !== 0)
-    .map(([cur, v]) => `<span class="bp-total-item"><span class="bp-total-cur">${escapeHtml(cur)}</span> ${_fmtPrice(v.value_current, cur)} &nbsp;${_fmtPnl(v.pnl)}</span>`)
+    .map(([cur, v]) => {
+      const cashNote = v.cash ? ` <span class="bp-total-cash">(+${_fmtPrice(v.cash, cur)} készpénz)</span>` : ''
+      return `<span class="bp-total-item"><span class="bp-total-cur">${escapeHtml(cur)}</span> ${_fmtPrice(v.value_current, cur)}${cashNote}&nbsp;${_fmtPnl(v.pnl)}</span>`
+    })
     .join('')
   const hufPnl = _fmtPnl(t.pnl)
   return `<div class="bp-totals-bar">

@@ -5098,9 +5098,14 @@ main {
 
 .buffett-portfolio-table .bp-row-profit td { background: #c8f0cc; }
 .buffett-portfolio-table .bp-row-loss td { background: #ffc8c8; }
+.buffett-portfolio-table .bp-row-copy td { background: #e8eef8; font-style: italic; }
 
 [data-theme="dark"] .buffett-portfolio-table .bp-row-profit td { background: #1a3d1f; }
 [data-theme="dark"] .buffett-portfolio-table .bp-row-loss td { background: #3d1a1a; }
+[data-theme="dark"] .buffett-portfolio-table .bp-row-copy td { background: #1a2238; }
+
+.bp-copy-closed { font-size: 10px; color: var(--text-muted); margin-left: 4px; font-style: normal; }
+.bp-total-cash { font-size: 11px; color: var(--text-muted); margin: 0 4px; }
 
 [data-theme="dark"] .buffett-portfolio-table th,
 [data-theme="dark"] .buffett-portfolio-table td { border-color: #555; }
