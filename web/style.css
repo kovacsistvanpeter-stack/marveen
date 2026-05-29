@@ -5469,8 +5469,10 @@ main {
   .bp-hero-stats { flex-direction: row; gap: 16px; }
   .bp-detail-table thead th:nth-child(4),
   .bp-detail-table thead th:nth-child(5),
+  .bp-detail-table thead th:nth-child(8),
   .bp-detail-table thead th:nth-child(9),
   .bp-detail-table tbody td:nth-child(4),
   .bp-detail-table tbody td:nth-child(5),
+  .bp-detail-table tbody td:nth-child(8),
   .bp-detail-table tbody td:nth-child(9) { display: none; }
 }
