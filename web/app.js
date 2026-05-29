@@ -8407,22 +8407,25 @@ function _buildPortfolioTable(positions, currency, isLightyear) {
     return '<div class="buffett-empty-small">Nincs nyitott pozíció</div>'
   }
   const rows = positions.map(p => {
-    const priceVal = p.current_price ?? p.market_value
-    const priceTitle = p.current_price == null && p.market_value != null ? ' title="Piaci érték (ár/db n.a.)"' : ''
+    const curVal = p.position_value_current ?? (isLightyear ? p.market_value : null)
     const costPos = p.position_value_cost != null
       ? p.position_value_cost
       : (isLightyear && p.cost_basis != null && p.quantity != null ? p.cost_basis * p.quantity : null)
     const divCell = p.annual_dividend_estimate != null
       ? _fmtPrice(p.annual_dividend_estimate, p.currency || currency)
-      : _fmtYield(p.dividend_yield_pct)
+      : p.dividend_yield_pct != null
+        ? _fmtYield(p.dividend_yield_pct)
+        : '<span class="bp-null">n/a</span>'
     const qtyCell = p.quantity != null
       ? escapeHtml(Number(p.quantity).toLocaleString('hu-HU', { maximumFractionDigits: 4 }))
       : '<span class="bp-null">--</span>'
+    const pnl = p.unrealized_pnl ?? 0
+    const rowClass = pnl > 0 ? 'bp-row-profit' : pnl < 0 ? 'bp-row-loss' : ''
     return `
-    <tr>
+    <tr class="${rowClass}">
       <td><span class="bp-ticker">${escapeHtml(p.ticker || '--')}</span></td>
       <td><span class="bp-name">${escapeHtml(p.name || '')}</span></td>
-      <td${priceTitle}>${_fmtPrice(priceVal, p.currency || currency)}</td>
+      <td>${_fmtPrice(curVal, p.currency || currency)}</td>
       <td>${_fmtPrice(costPos, p.currency || currency)}</td>
       <td class="bp-qty">${qtyCell}</td>
       <td>${_fmtPnl(p.unrealized_pnl, p.unrealized_pnl_pct)}</td>
@@ -8431,7 +8434,7 @@ function _buildPortfolioTable(positions, currency, isLightyear) {
   }).join('')
   return `<table class="buffett-portfolio-table">
     <thead><tr>
-      <th>Ticker</th><th>Név</th><th>Aktuális ár</th><th>Vételi ár</th><th>Db</th><th>P&amp;L</th><th>Éves osztalék</th>
+      <th>Ticker</th><th>Név</th><th>Aktuális érték</th><th>Vételi ár</th><th>Db</th><th>P&amp;L</th><th>Éves osztalék</th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>`
@@ -8450,6 +8453,22 @@ function _buildTotalsBar(totals) {
     <span class="bp-total-label">Összesen:</span>
     ${curParts}
     <span class="bp-total-huf">${_fmtPrice(t.value_current, 'HUF')}&nbsp;P&amp;L:&nbsp;${hufPnl}</span>
+  </div>`
+}
+
+function _buildPortfolioSummary(totals) {
+  if (!totals) return ''
+  const byCur = totals.by_currency || {}
+  // Show the highest-value native currency (USD first if present, then by value)
+  const nonZero = Object.entries(byCur).filter(([, v]) => v.value_current > 0)
+  if (nonZero.length === 0) return ''
+  const usdEntry = nonZero.find(([c]) => c === 'USD')
+  const [cur, vals] = usdEntry || nonZero.sort((a, b) => b[1].value_current - a[1].value_current)[0]
+  const pnlPct = vals.value_cost ? (vals.pnl / vals.value_cost * 100) : null
+  const pctStr = pnlPct != null ? ` (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}%)` : ''
+  return `<div class="bp-portfolio-summary">
+    <span class="bp-summary-value">${_fmtPrice(vals.value_current, cur)}</span>
+    <span class="bp-summary-pnl ${vals.pnl >= 0 ? 'bp-pnl-pos' : 'bp-pnl-neg'}">&nbsp;P&amp;L: ${_fmtPrice(vals.pnl, cur)}${escapeHtml(pctStr)}</span>
   </div>`
 }
 
@@ -8493,8 +8512,29 @@ async function loadBuffettPortfolio() {
 
     for (const portfolio of (data.portfolios || [])) {
       const isLightyear = (portfolio.broker === 'lightyear') || /lightyear/i.test(portfolio.name)
+
+      // Lightyear positions don't have position_value_current set server-side;
+      // compute it from market_value so totals and summary show correct values.
+      if (isLightyear) {
+        const byCur = {}
+        for (const pos of (portfolio.positions || [])) {
+          if (pos.position_value_current == null) pos.position_value_current = pos.market_value
+          if (pos.position_value_cost == null && pos.cost_basis != null && pos.quantity != null) {
+            pos.position_value_cost = Math.round(pos.cost_basis * pos.quantity * 100) / 100
+          }
+          const cur = (pos.currency || 'USD').toUpperCase()
+          if (!byCur[cur]) byCur[cur] = { value_current: 0, value_cost: 0, pnl: 0, annual_dividend: 0 }
+          byCur[cur].value_current = Math.round((byCur[cur].value_current + (pos.position_value_current || 0)) * 100) / 100
+          byCur[cur].value_cost = Math.round((byCur[cur].value_cost + (pos.position_value_cost || 0)) * 100) / 100
+        }
+        if (Object.keys(byCur).length > 0) {
+          portfolio.totals = { ...portfolio.totals, by_currency: byCur }
+        }
+      }
+
       html += `<div class="buffett-broker-block">
         <div class="buffett-broker-name">${escapeHtml(portfolio.name)}</div>
+        ${_buildPortfolioSummary(portfolio.totals)}
         ${_buildPortfolioTable(portfolio.positions, null, isLightyear)}
         ${_buildTotalsBar(portfolio.totals)}
       </div>`

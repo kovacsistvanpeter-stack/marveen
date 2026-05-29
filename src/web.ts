@@ -14,6 +14,8 @@ import { startMcpListChecker } from './web/mcp-list.js'
 import { startScheduleRunner } from './web/schedule-runner.js'
 import { startChannelPluginMonitor } from './web/channel-monitor.js'
 import { startChannelHealthMonitor } from './web/channel-health-monitor.js'
+import { startOrphanWatchdog } from './web/orphan-watchdog.js'
+import { startContextMonitor } from './web/context-monitor.js'
 import { logger } from './logger.js'
 import { tryHandleProfiles } from './web/routes/profiles.js'
 import { tryHandleMessages } from './web/routes/messages.js'
@@ -221,6 +223,12 @@ export function startWebServer(port = 3420): http.Server {
   const channelHealthInterval = startChannelHealthMonitor()
   logger.info('Channel MCP health monitor started (60s poll, 45s offset)')
 
+  const orphanWatchdogInterval = startOrphanWatchdog()
+  logger.info('Orphan watchdog started (60s poll, 90s initial delay)')
+
+  const contextMonitorInterval = startContextMonitor()
+  logger.info('Context monitor started (10min poll, 150k token threshold)')
+
   const updateCheckerInterval = startUpdateChecker()
   logger.info('Update checker started (15min poll)')
 
@@ -267,6 +275,8 @@ export function startWebServer(port = 3420): http.Server {
     clearInterval(scheduleInterval)
     clearInterval(pluginMonitorInterval)
     clearInterval(channelHealthInterval)
+    clearInterval(orphanWatchdogInterval)
+    clearInterval(contextMonitorInterval)
     clearInterval(updateCheckerInterval)
     return origClose(cb)
   }

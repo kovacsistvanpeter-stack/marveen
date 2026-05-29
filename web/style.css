@@ -4893,6 +4893,8 @@ main {
 @media (max-width: 600px) {
   .auth-mode-cards { gap: 6px; }
   .auth-mode-card { padding: 10px 12px; gap: 10px; }
+}
+
 /* === Buffett Page === */
 .buffett-stats {
   display: grid;
@@ -5025,6 +5027,23 @@ main {
   color: var(--text-muted);
 }
 
+.bp-portfolio-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 4px 2px 10px;
+}
+.bp-summary-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -.01em;
+}
+.bp-summary-pnl {
+  font-size: 14px;
+  font-weight: 500;
+}
+
 .buffett-broker-block {
   margin-bottom: 20px;
 }
@@ -5053,7 +5072,8 @@ main {
   text-transform: uppercase;
   letter-spacing: .04em;
   padding: 5px 8px;
-  border: 1px solid var(--border);
+  border: 1px solid #aaa;
+  background: var(--bg-card);
   white-space: nowrap;
 }
 
@@ -5065,7 +5085,8 @@ main {
 .buffett-portfolio-table td {
   padding: 6px 8px;
   text-align: right;
-  border: 1px solid var(--border);
+  border: 1px solid #aaa;
+  background: var(--bg);
   vertical-align: middle;
   white-space: nowrap;
 }
@@ -5074,6 +5095,15 @@ main {
 .buffett-portfolio-table td:nth-child(2) {
   text-align: left;
 }
+
+.buffett-portfolio-table .bp-row-profit td { background: #c8f0cc; }
+.buffett-portfolio-table .bp-row-loss td { background: #ffc8c8; }
+
+[data-theme="dark"] .buffett-portfolio-table .bp-row-profit td { background: #1a3d1f; }
+[data-theme="dark"] .buffett-portfolio-table .bp-row-loss td { background: #3d1a1a; }
+
+[data-theme="dark"] .buffett-portfolio-table th,
+[data-theme="dark"] .buffett-portfolio-table td { border-color: #555; }
 
 .buffett-portfolio-table tr:hover td {
   background: var(--bg-card-hover);
