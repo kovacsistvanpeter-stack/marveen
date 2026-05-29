@@ -1009,8 +1009,8 @@
       <div class="page-header">
         <div class="page-header-row">
           <div>
-            <h1>Buffett portfólió</h1>
-            <p class="subtitle">Heti portfólió-elemzések és ticker-szintű memóriák</p>
+            <h1>Portfólió</h1>
+            <p class="subtitle">Valós idejű számlák és Buffett-elemzések</p>
           </div>
           <button class="btn-primary btn-compact" id="buffettRefreshBtn">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -1020,17 +1020,30 @@
           </button>
         </div>
       </div>
-      <!-- Portfolio table section -->
-      <div id="buffettPortfolioSection">
-        <div class="buffett-portfolio-header">
-          <div class="buffett-panel-title">Portfólió</div>
-          <div id="buffettPortfolioRefreshedAt" class="buffett-portfolio-ts"></div>
-        </div>
-        <div id="buffettPortfolioContent">
-          <div class="buffett-empty-small">Betöltés...</div>
-        </div>
+
+      <!-- Sub-tab navigation bar -->
+      <div id="buffettSubTabBar" class="bp-subtab-bar" hidden>
+        <button class="bp-subtab active" data-tab="summary">Összesítő</button>
+        <span class="bp-subtab-sep"></span>
+        <button class="bp-subtab" data-tab="etoro">eToro</button>
+        <button class="bp-subtab" data-tab="lightyear">Lightyear</button>
+        <button class="bp-subtab" data-tab="ibkr-kinga">IBKR Kinga</button>
+        <button class="bp-subtab" data-tab="ibkr-szorgos">IBKR Szorgos</button>
+        <button class="bp-subtab" data-tab="ibkr-imi">IBKR Imi</button>
+        <span class="bp-subtab-sep"></span>
+        <button class="bp-subtab" data-tab="passive">Passzív</button>
+        <span id="buffettPortfolioRefreshedAt" class="bp-ts-right"></span>
       </div>
 
+      <!-- Summary view (card grid) -->
+      <div id="buffettSummaryView">
+        <div class="buffett-empty-small">Betöltés...</div>
+      </div>
+
+      <!-- Detail view (account drill-down) -->
+      <div id="buffettDetailView" hidden></div>
+
+      <!-- Ticker memories section -->
       <div class="buffett-stats" id="buffettStats"></div>
       <div class="buffett-layout">
         <div class="buffett-runs-panel">

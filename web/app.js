@@ -8376,6 +8376,329 @@ window.addEventListener('resize', () => {
 })()
 // === Buffett Page ===
 let buffettSelectedDate = null
+let _buffettData = null
+let _buffettActiveTab = 'summary'
+
+const _BP_BROKER_MAP = {
+  'etoro': 'etoro',
+  'lightyear': 'lightyear',
+  'ibkr-kinga': 'ibkr-flex',
+  'ibkr-szorgos': 'ibkr-szorgos',
+  'ibkr-imi': 'ibkr-imi',
+}
+const _BP_COLORS = {
+  'etoro': '#10b759',
+  'lightyear': '#2563eb',
+  'ibkr-flex': '#cc2222',
+  'ibkr-szorgos': '#e04444',
+  'ibkr-imi': '#e06666',
+  'passive': '#64748b',
+}
+const _BP_LETTERS = {
+  'etoro': 'e', 'lightyear': 'L', 'ibkr-flex': 'IB', 'ibkr-szorgos': 'IB', 'ibkr-imi': 'IB', 'passive': '🏦',
+}
+
+function _getFxRate(currency, fx) {
+  if (!currency || currency.toUpperCase() === 'HUF') return 1
+  const c = currency.toUpperCase()
+  if (c === 'USD') return fx.usd_huf || 305.83
+  if (c === 'EUR') return fx.eur_huf || 355.28
+  if (c === 'GBP') return fx.gbp_huf || 409.95
+  if (c === 'CAD') return fx.cad_huf || 220.75
+  return 1
+}
+
+function _fmtHuf(v) {
+  if (v == null) return '--'
+  return Math.round(v).toLocaleString('hu-HU') + ' Ft'
+}
+
+function _patchLightyear(portfolio) {
+  if (!(/lightyear/i.test(portfolio.name) || portfolio.broker === 'lightyear')) return portfolio
+  const byCur = {}
+  for (const pos of (portfolio.positions || [])) {
+    if (pos.position_value_current == null) pos.position_value_current = pos.market_value
+    if (pos.position_value_cost == null && pos.cost_basis != null && pos.quantity != null) {
+      pos.position_value_cost = Math.round(pos.cost_basis * pos.quantity * 100) / 100
+    }
+    const cur = (pos.currency || 'USD').toUpperCase()
+    if (!byCur[cur]) byCur[cur] = { value_current: 0, value_cost: 0, pnl: 0 }
+    byCur[cur].value_current = Math.round((byCur[cur].value_current + (pos.position_value_current || 0)) * 100) / 100
+    byCur[cur].value_cost = Math.round((byCur[cur].value_cost + (pos.position_value_cost || 0)) * 100) / 100
+  }
+  if (Object.keys(byCur).length > 0 && portfolio.totals) {
+    portfolio.totals = { ...portfolio.totals, by_currency: { ...portfolio.totals.by_currency, ...byCur } }
+  }
+  return portfolio
+}
+
+function _computePassiveHuf(passive, fx) {
+  return (passive || []).reduce((sum, p) => sum + (p.value_native || 0) * _getFxRate(p.currency, fx), 0)
+}
+
+function _buildAccountCards(data) {
+  const fx = data.fx || {}
+  const passiveHuf = _computePassiveHuf(data.passive, fx)
+  const portfolioHuf = (data.portfolios || []).reduce((s, p) => s + (p.totals?.total_huf?.value_current || 0), 0)
+  const grandTotal = portfolioHuf + passiveHuf
+
+  const fxDate = fx.date ? ` · FX: ${fx.date}` : ''
+  let html = `<div class="bp-summary-header">
+    <div class="bp-total-nw">${_fmtHuf(grandTotal).replace(' Ft', '')} <span class="bp-total-nw-unit">Ft</span></div>
+    <div class="bp-total-sub">Teljes portfólió${fxDate}</div>
+  </div><div class="bp-account-cards">`
+
+  for (const portfolio of (data.portfolios || [])) {
+    const broker = portfolio.broker || ''
+    const color = _BP_COLORS[broker] || '#888'
+    const letter = _BP_LETTERS[broker] || broker.slice(0, 2).toUpperCase()
+    const huf = portfolio.totals?.total_huf?.value_current || 0
+    const pnlHuf = portfolio.totals?.total_huf?.pnl || 0
+    const pct = grandTotal > 0 ? (huf / grandTotal * 100) : 0
+    const barW = Math.min(100, Math.round(pct))
+    const byCur = portfolio.totals?.by_currency || {}
+    const nativeParts = Object.entries(byCur)
+      .filter(([, v]) => v.value_current > 0)
+      .slice(0, 2)
+      .map(([cur, v]) => `${_fmtPrice(v.value_current, cur)}`)
+      .join(' · ')
+    const pnlCls = pnlHuf > 0 ? 'pos' : pnlHuf < 0 ? 'neg' : 'neutral'
+    const pnlStr = pnlHuf !== 0 ? (pnlHuf > 0 ? '+' : '') + _fmtHuf(pnlHuf) : 'P&L: --'
+    const tabId = Object.entries(_BP_BROKER_MAP).find(([, b]) => b === broker)?.[0] || broker
+    const posCount = (portfolio.positions || []).length
+
+    html += `<div class="bp-account-card" data-tab="${escapeHtml(tabId)}" role="button" tabindex="0">
+      <div class="bp-card-top">
+        <div class="bp-card-icon" style="background:${color}">${escapeHtml(letter)}</div>
+        <div class="bp-card-names">
+          <div class="bp-card-name">${escapeHtml(portfolio.name)}</div>
+          <div class="bp-card-sub">${posCount} pozíció</div>
+        </div>
+        <div class="bp-card-pnl ${pnlCls}">${pnlStr}</div>
+      </div>
+      <div class="bp-card-huf">${_fmtHuf(huf).replace(' Ft', '')} <span class="bp-card-huf-unit">Ft</span></div>
+      <div class="bp-card-native">${nativeParts || '--'}</div>
+      <div class="bp-card-bar-wrap">
+        <div class="bp-card-bar-bg"><div class="bp-card-bar-fill" style="width:${barW}%;background:${color}"></div></div>
+        <span class="bp-card-bar-pct">${pct.toFixed(1)}%</span>
+      </div>
+    </div>`
+  }
+
+  // Passive card
+  if ((data.passive || []).length > 0) {
+    const pct = grandTotal > 0 ? (passiveHuf / grandTotal * 100) : 0
+    const barW = Math.min(100, Math.round(pct))
+    html += `<div class="bp-account-card" data-tab="passive" role="button" tabindex="0">
+      <div class="bp-card-top">
+        <div class="bp-card-icon" style="background:#64748b;font-size:18px">🏦</div>
+        <div class="bp-card-names">
+          <div class="bp-card-name">Passzív tételek</div>
+          <div class="bp-card-sub">${data.passive.length} tétel · wealth_config.json</div>
+        </div>
+        <div class="bp-card-pnl neutral">n/a</div>
+      </div>
+      <div class="bp-card-huf">${_fmtHuf(passiveHuf).replace(' Ft', '')} <span class="bp-card-huf-unit">Ft</span></div>
+      <div class="bp-card-native">Fundsmith · Adventum · Ledger · Nyrt.</div>
+      <div class="bp-card-bar-wrap">
+        <div class="bp-card-bar-bg"><div class="bp-card-bar-fill" style="width:${barW}%;background:#64748b"></div></div>
+        <span class="bp-card-bar-pct">${pct.toFixed(1)}%</span>
+      </div>
+    </div>`
+  }
+
+  html += '</div>'
+  return html
+}
+
+function _buildDetailHero(portfolio, data) {
+  const broker = portfolio.broker || ''
+  const color = _BP_COLORS[broker] || '#888'
+  const letter = _BP_LETTERS[broker] || broker.slice(0, 2).toUpperCase()
+  const huf = portfolio.totals?.total_huf?.value_current || 0
+  const pnlHuf = portfolio.totals?.total_huf?.pnl || 0
+  const byCur = portfolio.totals?.by_currency || {}
+  const nativeParts = Object.entries(byCur)
+    .filter(([, v]) => v.value_current > 0)
+    .map(([cur, v]) => `${_fmtPrice(v.value_current, cur)}`)
+    .join(' · ')
+  const pnlCls = pnlHuf > 0 ? 'pos' : pnlHuf < 0 ? 'neg' : ''
+  const pnlPill = `<span class="bp-hero-pill ${pnlCls}">P&L: ${pnlHuf > 0 ? '+' : ''}${_fmtHuf(pnlHuf)}</span>`
+  const posCount = (portfolio.positions || []).length
+
+  return `<div class="bp-detail-hero">
+    <div class="bp-hero-icon" style="background:${color}">${escapeHtml(letter)}</div>
+    <div class="bp-hero-body">
+      <div class="bp-hero-name">${escapeHtml(portfolio.name)}</div>
+      <div class="bp-hero-sub">${posCount} pozíció · FX: ${data.fx?.date || '--'}</div>
+      <div class="bp-hero-value">${_fmtHuf(huf)}</div>
+      <div class="bp-hero-native">${nativeParts || '--'}</div>
+      <div class="bp-hero-pills">
+        ${pnlPill}
+        <span class="bp-hero-pill">${posCount} pozíció</span>
+      </div>
+    </div>
+  </div>`
+}
+
+function _buildDetailTable(portfolio, data) {
+  const fx = data.fx || {}
+  const broker = portfolio.broker || ''
+  const isLightyear = broker === 'lightyear'
+  const positions = portfolio.positions || []
+  const totalHuf = portfolio.totals?.total_huf?.value_current || 0
+
+  if (positions.length === 0) return '<div class="buffett-empty-small">Nincs pozíció</div>'
+
+  const rows = positions.map(p => {
+    const cur = (p.currency || 'USD').toUpperCase()
+    const curVal = p.position_value_current ?? (isLightyear ? p.market_value : null)
+    const costVal = p.position_value_cost != null ? p.position_value_cost
+      : (isLightyear && p.cost_basis != null && p.quantity != null ? Math.round(p.cost_basis * p.quantity * 100) / 100 : null)
+    const pnl = p.unrealized_pnl ?? (curVal != null && costVal != null ? curVal - costVal : null)
+    const pnlPct = p.unrealized_pnl_pct ?? (costVal && pnl != null ? pnl / costVal * 100 : null)
+    const hufVal = curVal != null ? curVal * _getFxRate(cur, fx) : null
+    const weight = (hufVal != null && totalHuf > 0) ? (hufVal / totalHuf * 100) : null
+    const isCopy = !!p.is_copy_trade
+    const rowClass = isCopy ? 'bp-row-copy' : ((pnl ?? 0) > 0 ? 'bp-row-profit' : (pnl ?? 0) < 0 ? 'bp-row-loss' : '')
+    const closedNote = isCopy && p.copy_closed_profit != null
+      ? `<span class="bp-copy-closed"> +${_fmtPrice(p.copy_closed_profit, cur)} zárt</span>` : ''
+    const qtyCell = isCopy
+      ? (p.copy_open_positions != null ? p.copy_open_positions + ' pos' : '<span class="bp-null">--</span>')
+      : (p.quantity != null ? escapeHtml(Number(p.quantity).toLocaleString('hu-HU', { maximumFractionDigits: 4 })) : '<span class="bp-null">--</span>')
+    const barW = weight != null ? Math.min(100, Math.round(weight * 3)) : 0
+    const accentColor = _BP_COLORS[broker] || 'var(--accent)'
+
+    return `<tr class="${rowClass}">
+      <td><span class="bp-ticker">${escapeHtml(p.ticker || '--')}</span>${closedNote}</td>
+      <td><span class="bp-name">${escapeHtml(p.name || '')}</span></td>
+      <td>${qtyCell}</td>
+      <td>${isCopy ? '<span class="bp-null">--</span>' : _fmtPrice(p.cost_basis, cur)}</td>
+      <td>${isCopy ? '<span class="bp-null">--</span>' : _fmtPrice(p.current_price, cur)}</td>
+      <td>${_fmtPrice(curVal, cur)}</td>
+      <td>${hufVal != null ? _fmtHuf(hufVal) : '<span class="bp-null">--</span>'}</td>
+      <td>${_fmtPnl(pnl, pnlPct)}</td>
+      <td><div class="bp-weight-cell"><div class="bp-weight-bar-bg"><div class="bp-weight-bar-fill" style="width:${barW}%;background:${accentColor}"></div></div><span style="font-size:10px;color:var(--text-muted);width:36px;text-align:right;flex-shrink:0">${weight != null ? weight.toFixed(1) + '%' : '--'}</span></div></td>
+    </tr>`
+  }).join('')
+
+  return `<div class="bp-detail-table-wrap">
+    <div class="bp-detail-table-head">
+      <span class="bp-detail-table-title">Pozíciók</span>
+      <span class="bp-detail-table-meta">${positions.length} db · ${data.fx?.date || '--'}</span>
+    </div>
+    <table class="bp-detail-table">
+      <thead><tr>
+        <th>Ticker</th><th>Név</th><th>Db</th><th>Vételár</th><th>Ár</th><th>Érték</th><th>HUF érték</th><th>P&amp;L</th><th>Súly</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${_buildTotalsBar(portfolio.totals)}
+  </div>`
+}
+
+function _buildAllocBars(portfolio, data) {
+  const fx = data.fx || {}
+  const broker = portfolio.broker || ''
+  const isLightyear = broker === 'lightyear'
+  const totalHuf = portfolio.totals?.total_huf?.value_current || 0
+  if (!totalHuf) return ''
+
+  const positions = [...(portfolio.positions || [])]
+  positions.sort((a, b) => {
+    const aVal = (a.position_value_current ?? a.market_value ?? 0) * _getFxRate((a.currency || 'USD').toUpperCase(), fx)
+    const bVal = (b.position_value_current ?? b.market_value ?? 0) * _getFxRate((b.currency || 'USD').toUpperCase(), fx)
+    return bVal - aVal
+  })
+  const top8 = positions.slice(0, 8)
+  const accentColor = _BP_COLORS[broker] || 'var(--accent)'
+
+  const rows = top8.map(p => {
+    const cur = (p.currency || 'USD').toUpperCase()
+    const curVal = p.position_value_current ?? (isLightyear ? p.market_value : 0) ?? 0
+    const hufVal = curVal * _getFxRate(cur, fx)
+    const pct = totalHuf > 0 ? (hufVal / totalHuf * 100) : 0
+    return `<div class="bp-alloc-row">
+      <span class="bp-alloc-name">${escapeHtml(p.ticker || p.name || '--')}</span>
+      <div class="bp-alloc-bar-bg"><div class="bp-alloc-bar-fill" style="width:${Math.min(100, pct)}%;background:${accentColor}"></div></div>
+      <span class="bp-alloc-pct">${pct.toFixed(1)}%</span>
+      <span class="bp-alloc-huf">${_fmtHuf(hufVal)}</span>
+    </div>`
+  }).join('')
+
+  return `<div class="bp-alloc-panel">
+    <div class="bp-alloc-panel-title">Pozíció-allokáció (top ${top8.length})</div>
+    ${rows}
+  </div>`
+}
+
+function _buildPassiveCards(data) {
+  const fx = data.fx || {}
+  const passive = data.passive || []
+  if (passive.length === 0) return '<div class="buffett-empty-small">Nincs passzív tétel.</div>'
+
+  const catIcons = { fund: '📊', crypto: '₿', stock: '📈', real_estate: '🏠', default: '💼' }
+
+  const cards = passive.map(p => {
+    const icon = catIcons[p.category] || catIcons.default
+    const huf = (p.value_native || 0) * _getFxRate(p.currency, fx)
+    const incomeStr = p.annual_income_native != null
+      ? `<div class="bp-passive-card-row"><span class="bp-passive-card-label">Éves bevétel</span><span class="bp-passive-card-val">${_fmtPrice(p.annual_income_native, p.currency)}</span></div>` : ''
+    const noteStr = p.note ? `<div class="bp-passive-note">${escapeHtml(p.note)}</div>` : ''
+    return `<div class="bp-passive-card">
+      <div class="bp-passive-card-icon">${icon}</div>
+      <div class="bp-passive-card-name">${escapeHtml(p.name || '--')}</div>
+      <div class="bp-passive-card-type">${escapeHtml(p.subcategory || p.category || '')}</div>
+      <div class="bp-passive-card-value">${_fmtHuf(huf)}</div>
+      <div class="bp-passive-card-native">${_fmtPrice(p.value_native, p.currency)} ${escapeHtml(p.currency || '')}</div>
+      <div class="bp-passive-card-divider"></div>
+      ${incomeStr}
+      ${noteStr}
+    </div>`
+  }).join('')
+
+  return `<div class="bp-passive-edit-note">
+    Szerkesztés: <code>/projects/buffett-pipeline/wealth_config.json</code> → <code>passive_positions</code> tömb. Mentés után a pipeline következő futása automatikusan frissíti.
+  </div>
+  <div class="bp-passive-cards">${cards}</div>`
+}
+
+function buffettNavTo(tabId) {
+  if (!_buffettData) return
+  _buffettActiveTab = tabId
+
+  document.querySelectorAll('.bp-subtab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.tab === tabId)
+  })
+
+  const summaryEl = document.getElementById('buffettSummaryView')
+  const detailEl = document.getElementById('buffettDetailView')
+
+  if (tabId === 'summary') {
+    summaryEl.hidden = false
+    detailEl.hidden = true
+    return
+  }
+
+  summaryEl.hidden = true
+  detailEl.hidden = false
+
+  if (tabId === 'passive') {
+    detailEl.innerHTML = _buildPassiveCards(_buffettData)
+    return
+  }
+
+  const brokerSlug = _BP_BROKER_MAP[tabId]
+  let portfolio = (_buffettData.portfolios || []).find(p => p.broker === brokerSlug)
+  if (!portfolio) {
+    detailEl.innerHTML = '<div class="buffett-empty-small">Számla nem található.</div>'
+    return
+  }
+  portfolio = _patchLightyear(portfolio)
+  detailEl.innerHTML = _buildDetailHero(portfolio, _buffettData) +
+    _buildDetailTable(portfolio, _buffettData) +
+    _buildAllocBars(portfolio, _buffettData)
+}
 
 async function loadBuffett() {
   await Promise.allSettled([loadBuffettRuns(), loadBuffettMemories(), loadBuffettPortfolio()])
@@ -8497,65 +8820,47 @@ function _buildPassiveTable(items) {
 }
 
 async function loadBuffettPortfolio() {
-  const container = document.getElementById('buffettPortfolioContent')
+  const summaryEl = document.getElementById('buffettSummaryView')
+  const detailEl = document.getElementById('buffettDetailView')
   const tsEl = document.getElementById('buffettPortfolioRefreshedAt')
+  const subTabBar = document.getElementById('buffettSubTabBar')
   try {
     const res = await fetch('/api/buffett/portfolio')
     const data = await res.json()
 
     if (data._empty || (!data.portfolios?.length && !data.passive?.length)) {
-      container.innerHTML = '<div class="buffett-empty-small">Még nem volt napi refresh. Hajnali 6:00-kor frissül.</div>'
+      summaryEl.innerHTML = '<div class="buffett-empty-small">Még nem volt napi refresh. Hajnali 6:00-kor frissül.</div>'
       tsEl.textContent = ''
       return
     }
+
+    _buffettData = data
 
     if (data.refreshed_at) {
       const d = new Date(data.refreshed_at)
       tsEl.textContent = 'Frissítve: ' + d.toLocaleString('hu-HU', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
     }
 
-    let html = ''
+    subTabBar.hidden = false
+    summaryEl.innerHTML = _buildAccountCards(data)
 
-    for (const portfolio of (data.portfolios || [])) {
-      const isLightyear = (portfolio.broker === 'lightyear') || /lightyear/i.test(portfolio.name)
+    document.querySelectorAll('.bp-account-card').forEach(card => {
+      const tab = card.dataset.tab
+      card.addEventListener('click', () => buffettNavTo(tab))
+      card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') buffettNavTo(tab) })
+    })
+    document.querySelectorAll('.bp-subtab').forEach(btn => {
+      btn.addEventListener('click', () => buffettNavTo(btn.dataset.tab))
+    })
 
-      // Lightyear positions don't have position_value_current set server-side;
-      // compute it from market_value so totals and summary show correct values.
-      if (isLightyear) {
-        const byCur = {}
-        for (const pos of (portfolio.positions || [])) {
-          if (pos.position_value_current == null) pos.position_value_current = pos.market_value
-          if (pos.position_value_cost == null && pos.cost_basis != null && pos.quantity != null) {
-            pos.position_value_cost = Math.round(pos.cost_basis * pos.quantity * 100) / 100
-          }
-          const cur = (pos.currency || 'USD').toUpperCase()
-          if (!byCur[cur]) byCur[cur] = { value_current: 0, value_cost: 0, pnl: 0, annual_dividend: 0 }
-          byCur[cur].value_current = Math.round((byCur[cur].value_current + (pos.position_value_current || 0)) * 100) / 100
-          byCur[cur].value_cost = Math.round((byCur[cur].value_cost + (pos.position_value_cost || 0)) * 100) / 100
-        }
-        if (Object.keys(byCur).length > 0) {
-          portfolio.totals = { ...portfolio.totals, by_currency: byCur }
-        }
-      }
-
-      html += `<div class="buffett-broker-block">
-        <div class="buffett-broker-name">${escapeHtml(portfolio.name)}</div>
-        ${_buildPortfolioSummary(portfolio.totals)}
-        ${_buildPortfolioTable(portfolio.positions, null, isLightyear)}
-        ${_buildTotalsBar(portfolio.totals)}
-      </div>`
+    if (_buffettActiveTab !== 'summary') {
+      buffettNavTo(_buffettActiveTab)
+    } else {
+      summaryEl.hidden = false
+      detailEl.hidden = true
     }
-
-    if (data.passive?.length) {
-      html += `<div class="buffett-passive-block">
-        <div class="buffett-broker-name">Passzív statikus</div>
-        ${_buildPassiveTable(data.passive)}
-      </div>`
-    }
-
-    container.innerHTML = html
   } catch (err) {
-    container.innerHTML = '<div class="buffett-empty-small">Betöltési hiba</div>'
+    summaryEl.innerHTML = '<div class="buffett-empty-small">Betöltési hiba</div>'
     console.error('Buffett portfolio betöltési hiba:', err)
   }
 }
