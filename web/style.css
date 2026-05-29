@@ -5127,6 +5127,13 @@ main {
   border-top: 2px solid var(--border);
   background: var(--bg-card);
 }
+.bp-div-total {
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+  background: var(--bg-card);
+}
 .bp-total-label {
   font-weight: 600;
   font-size: 11px;

@@ -8403,8 +8403,15 @@ function _getFxRate(currency, fx) {
   const c = currency.toUpperCase()
   if (c === 'USD') return fx.usd_huf || 305.83
   if (c === 'EUR') return fx.eur_huf || 355.28
-  if (c === 'GBP') return fx.gbp_huf || 409.95
+  if (c === 'GBP' || c === 'GBP') return fx.gbp_huf || 409.95
   if (c === 'CAD') return fx.cad_huf || 220.75
+  if (c === 'SEK') return fx.sek_huf || 32.83
+  if (c === 'NOK') return fx.nok_huf || 32.91
+  if (c === 'DKK') return fx.dkk_huf || 47.54
+  if (c === 'CHF') return fx.chf_huf || 387.56
+  if (c === 'AUD') return fx.aud_huf || 217.72
+  if (c === 'JPY') return fx.jpy_huf || 1.92
+  if (c === 'HKD') return fx.hkd_huf || 39.04
   return 1
 }
 
@@ -8604,6 +8611,20 @@ function _buildDetailTable(portfolio, data) {
     </tr>`
   }).join('')
 
+  const divTotalHuf = positions
+    .filter(p => !p.is_copy_trade && p.annual_dividend_estimate != null)
+    .reduce((sum, p) => sum + p.annual_dividend_estimate * _getFxRate((p.currency || 'USD').toUpperCase(), fx), 0)
+  const divChip = divTotalHuf > 0 ? (() => {
+    const divUsd = fx.usd_huf ? divTotalHuf / fx.usd_huf : null
+    const divEur = fx.eur_huf ? divTotalHuf / fx.eur_huf : null
+    const parts = [
+      divUsd != null ? `$${Math.round(divUsd).toLocaleString('hu-HU')}` : null,
+      divEur != null ? `€${Math.round(divEur).toLocaleString('hu-HU')}` : null,
+      _fmtHuf(Math.round(divTotalHuf)),
+    ].filter(Boolean).join(' · ')
+    return `<div class="bp-div-total">Éves osztalék: <strong>${parts}</strong></div>`
+  })() : ''
+
   return `<div class="bp-detail-table-wrap">
     <div class="bp-detail-table-head">
       <span class="bp-detail-table-title">Pozíciók</span>
@@ -8616,6 +8637,7 @@ function _buildDetailTable(portfolio, data) {
       <tbody>${rows}</tbody>
     </table>
     ${_buildTotalsBar(portfolio.totals)}
+    ${divChip}
   </div>`
 }
 
