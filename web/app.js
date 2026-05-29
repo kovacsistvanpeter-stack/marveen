@@ -8539,11 +8539,14 @@ function _buildDetailHero(portfolio, data) {
   const letter = _BP_LETTERS[broker] || broker.slice(0, 2).toUpperCase()
   const huf = portfolio.totals?.total_huf?.value_current || 0
   const pnlHuf = portfolio.totals?.total_huf?.pnl || 0
-  const byCur = portfolio.totals?.by_currency || {}
-  const nativeParts = Object.entries(byCur)
-    .filter(([, v]) => v.value_current > 0)
-    .map(([cur, v]) => `${_fmtPrice(v.value_current, cur)}`)
-    .join(' · ')
+  const fx = data.fx || {}
+  const heroUsd = fx.usd_huf ? huf / fx.usd_huf : null
+  const heroEur = fx.eur_huf ? huf / fx.eur_huf : null
+  const heroNwHtml = [
+    heroUsd != null ? `<span class="bp-hero-nw-part">$${Math.round(heroUsd).toLocaleString('hu-HU')}</span>` : null,
+    heroEur != null ? `<span class="bp-hero-nw-part">€${Math.round(heroEur).toLocaleString('hu-HU')}</span>` : null,
+    `<span class="bp-hero-nw-part">${_fmtHuf(huf).replace(' Ft', '')} <span class="bp-hero-nw-unit">Ft</span></span>`,
+  ].filter(Boolean).join('')
   const pnlCls = pnlHuf > 0 ? 'pos' : pnlHuf < 0 ? 'neg' : ''
   const pnlPill = `<span class="bp-hero-pill ${pnlCls}">P&L: ${pnlHuf > 0 ? '+' : ''}${_fmtHuf(pnlHuf)}</span>`
   const posCount = (portfolio.positions || []).length
@@ -8553,8 +8556,7 @@ function _buildDetailHero(portfolio, data) {
     <div class="bp-hero-body">
       <div class="bp-hero-name">${escapeHtml(portfolio.name)}</div>
       <div class="bp-hero-sub">${posCount} pozíció · FX: ${data.fx?.date || '--'}</div>
-      <div class="bp-hero-value">${_fmtHuf(huf)}</div>
-      <div class="bp-hero-native">${nativeParts || '--'}</div>
+      <div class="bp-hero-nw">${heroNwHtml}</div>
       <div class="bp-hero-pills">
         ${pnlPill}
         <span class="bp-hero-pill">${posCount} pozíció</span>
@@ -8681,6 +8683,23 @@ function _buildPassiveCards(data) {
   const passive = data.passive || []
   if (passive.length === 0) return '<div class="buffett-empty-small">Nincs passzív tétel.</div>'
 
+  const passiveHuf = _computePassiveHuf(passive, fx)
+  const passUsd = fx.usd_huf ? passiveHuf / fx.usd_huf : null
+  const passEur = fx.eur_huf ? passiveHuf / fx.eur_huf : null
+  const passNwHtml = [
+    passUsd != null ? `<span class="bp-hero-nw-part">$${Math.round(passUsd).toLocaleString('hu-HU')}</span>` : null,
+    passEur != null ? `<span class="bp-hero-nw-part">€${Math.round(passEur).toLocaleString('hu-HU')}</span>` : null,
+    `<span class="bp-hero-nw-part">${_fmtHuf(passiveHuf).replace(' Ft', '')} <span class="bp-hero-nw-unit">Ft</span></span>`,
+  ].filter(Boolean).join('')
+  const passHero = `<div class="bp-detail-hero">
+    <div class="bp-hero-icon" style="background:#64748b;font-size:18px">🏦</div>
+    <div class="bp-hero-body">
+      <div class="bp-hero-name">Passzív tételek</div>
+      <div class="bp-hero-sub">${passive.length} tétel · wealth_config.json</div>
+      <div class="bp-hero-nw">${passNwHtml}</div>
+    </div>
+  </div>`
+
   const catIcons = { fund: '📊', crypto: '₿', stock: '📈', real_estate: '🏠', default: '💼' }
 
   const cards = passive.map(p => {
@@ -8701,7 +8720,7 @@ function _buildPassiveCards(data) {
     </div>`
   }).join('')
 
-  return `<div class="bp-passive-edit-note">
+  return passHero + `<div class="bp-passive-edit-note">
     Szerkesztés: <code>/projects/buffett-pipeline/wealth_config.json</code> → <code>passive_positions</code> tömb. Mentés után a pipeline következő futása automatikusan frissíti.
   </div>
   <div class="bp-passive-cards">${cards}</div>`

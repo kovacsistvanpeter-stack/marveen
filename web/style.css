@@ -5347,6 +5347,21 @@ main {
 .bp-hero-sub { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
 .bp-hero-value { font-size: 28px; font-weight: 700; color: var(--text); letter-spacing: -0.5px; line-height: 1; }
 .bp-hero-native { font-size: 13px; color: var(--text-muted); margin-top: 4px; margin-bottom: 10px; }
+.bp-hero-nw {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 20px;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: var(--text);
+  line-height: 1;
+  margin-top: 4px;
+  margin-bottom: 10px;
+}
+.bp-hero-nw-part { white-space: nowrap; }
+.bp-hero-nw-unit { font-size: 14px; font-weight: 400; color: var(--text-muted); }
 .bp-hero-pills { display: flex; gap: 8px; flex-wrap: wrap; }
 .bp-hero-pill {
   font-size: 11px;
