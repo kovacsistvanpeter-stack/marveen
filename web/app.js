@@ -8463,12 +8463,13 @@ function _buildAccountCards(data) {
     const pnlHuf = portfolio.totals?.total_huf?.pnl || 0
     const pct = grandTotal > 0 ? (huf / grandTotal * 100) : 0
     const barW = Math.min(100, Math.round(pct))
-    const byCur = portfolio.totals?.by_currency || {}
-    const nativeParts = Object.entries(byCur)
-      .filter(([, v]) => v.value_current > 0)
-      .slice(0, 2)
-      .map(([cur, v]) => `${_fmtPrice(v.value_current, cur)}`)
-      .join(' · ')
+    const cardUsd = fx.usd_huf ? huf / fx.usd_huf : null
+    const cardEur = fx.eur_huf ? huf / fx.eur_huf : null
+    const nativeParts = [
+      cardUsd != null ? `$${Math.round(cardUsd).toLocaleString('hu-HU')}` : null,
+      cardEur != null ? `€${Math.round(cardEur).toLocaleString('hu-HU')}` : null,
+      `${_fmtHuf(huf)}`,
+    ].filter(Boolean).join(' · ')
     const pnlCls = pnlHuf > 0 ? 'pos' : pnlHuf < 0 ? 'neg' : 'neutral'
     const pnlStr = pnlHuf !== 0 ? (pnlHuf > 0 ? '+' : '') + _fmtHuf(pnlHuf) : 'P&L: --'
     const tabId = Object.entries(_BP_BROKER_MAP).find(([, b]) => b === broker)?.[0] || broker
@@ -8496,6 +8497,13 @@ function _buildAccountCards(data) {
   if ((data.passive || []).length > 0) {
     const pct = grandTotal > 0 ? (passiveHuf / grandTotal * 100) : 0
     const barW = Math.min(100, Math.round(pct))
+    const passiveUsd = fx.usd_huf ? passiveHuf / fx.usd_huf : null
+    const passiveEur = fx.eur_huf ? passiveHuf / fx.eur_huf : null
+    const passiveParts = [
+      passiveUsd != null ? `$${Math.round(passiveUsd).toLocaleString('hu-HU')}` : null,
+      passiveEur != null ? `€${Math.round(passiveEur).toLocaleString('hu-HU')}` : null,
+      _fmtHuf(passiveHuf),
+    ].filter(Boolean).join(' · ')
     html += `<div class="bp-account-card" data-tab="passive" role="button" tabindex="0">
       <div class="bp-card-top">
         <div class="bp-card-icon" style="background:#64748b;font-size:18px">🏦</div>
@@ -8506,7 +8514,7 @@ function _buildAccountCards(data) {
         <div class="bp-card-pnl neutral">n/a</div>
       </div>
       <div class="bp-card-huf">${_fmtHuf(passiveHuf).replace(' Ft', '')} <span class="bp-card-huf-unit">Ft</span></div>
-      <div class="bp-card-native">Fundsmith · Adventum · Ledger · Nyrt.</div>
+      <div class="bp-card-native">${passiveParts}</div>
       <div class="bp-card-bar-wrap">
         <div class="bp-card-bar-bg"><div class="bp-card-bar-fill" style="width:${barW}%;background:#64748b"></div></div>
         <span class="bp-card-bar-pct">${pct.toFixed(1)}%</span>
