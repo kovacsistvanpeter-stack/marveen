@@ -8443,8 +8443,15 @@ function _buildAccountCards(data) {
   const grandTotal = portfolioHuf + passiveHuf
 
   const fxDate = fx.date ? ` · FX: ${fx.date}` : ''
+  const grandUsd = fx.usd_huf ? grandTotal / fx.usd_huf : null
+  const grandEur = fx.eur_huf ? grandTotal / fx.eur_huf : null
+  const fxLine = [
+    grandUsd != null ? `$${Math.round(grandUsd).toLocaleString('hu-HU')}` : null,
+    grandEur != null ? `€${Math.round(grandEur).toLocaleString('hu-HU')}` : null,
+  ].filter(Boolean).join(' &nbsp;·&nbsp; ')
   let html = `<div class="bp-summary-header">
     <div class="bp-total-nw">${_fmtHuf(grandTotal).replace(' Ft', '')} <span class="bp-total-nw-unit">Ft</span></div>
+    ${fxLine ? `<div class="bp-total-fx">${fxLine}</div>` : ''}
     <div class="bp-total-sub">Teljes portfólió${fxDate}</div>
   </div><div class="bp-account-cards">`
 
