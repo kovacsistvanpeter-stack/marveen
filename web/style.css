@@ -5244,12 +5244,17 @@ main {
   margin-bottom: 18px;
 }
 .bp-total-nw {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 24px;
   font-size: 32px;
   font-weight: 700;
   letter-spacing: -0.5px;
   color: var(--text);
   line-height: 1;
 }
+.bp-nw-part { white-space: nowrap; }
 .bp-total-nw-unit { font-size: 16px; font-weight: 400; color: var(--text-muted); }
 .bp-total-fx { font-size: 16px; font-weight: 500; color: var(--text-muted); margin-top: 5px; letter-spacing: -0.2px; }
 .bp-total-sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
