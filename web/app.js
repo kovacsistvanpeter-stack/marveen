@@ -8575,11 +8575,12 @@ function _buildDetailTable(portfolio, data) {
       : (p.quantity != null ? escapeHtml(Number(p.quantity).toLocaleString('hu-HU', { maximumFractionDigits: 4 })) : '<span class="bp-null">--</span>')
     const barW = weight != null ? Math.min(100, Math.round(weight * 3)) : 0
     const accentColor = _BP_COLORS[broker] || 'var(--accent)'
-    const annualDiv = p.annual_dividend_estimate != null
+    const divYieldStr = (!isCopy && p.dividend_yield_pct != null)
+      ? escapeHtml(p.dividend_yield_pct.toFixed(2) + '%')
+      : '<span class="bp-null">--</span>'
+    const annualDiv = (!isCopy && p.annual_dividend_estimate != null)
       ? _fmtPrice(p.annual_dividend_estimate, cur)
-      : (p.dividend_yield_pct != null && curVal != null
-          ? _fmtPrice(curVal * p.dividend_yield_pct / 100, cur)
-          : '<span class="bp-null">--</span>')
+      : '<span class="bp-null">~</span>'
 
     return `<tr class="${rowClass}">
       <td><span class="bp-ticker">${escapeHtml(p.ticker || '--')}</span>${closedNote}</td>
@@ -8589,7 +8590,8 @@ function _buildDetailTable(portfolio, data) {
       <td>${isCopy ? '<span class="bp-null">--</span>' : _fmtPrice(p.current_price, cur)}</td>
       <td>${_fmtPrice(curVal, cur)}</td>
       <td>${_fmtPnl(pnl, pnlPct)}</td>
-      <td>${isCopy ? '<span class="bp-null">--</span>' : annualDiv}</td>
+      <td>${divYieldStr}</td>
+      <td>${annualDiv}</td>
       <td><div class="bp-weight-cell"><div class="bp-weight-bar-bg"><div class="bp-weight-bar-fill" style="width:${barW}%;background:${accentColor}"></div></div><span style="font-size:10px;color:var(--text-muted);width:36px;text-align:right;flex-shrink:0">${weight != null ? weight.toFixed(1) + '%' : '--'}</span></div></td>
     </tr>`
   }).join('')
@@ -8601,7 +8603,7 @@ function _buildDetailTable(portfolio, data) {
     </div>
     <table class="bp-detail-table">
       <thead><tr>
-        <th>Ticker</th><th>Név</th><th>Db</th><th>Vételár</th><th>Ár</th><th>Érték</th><th>P&amp;L</th><th>Évi osztalék</th><th>Súly</th>
+        <th>Ticker</th><th>Név</th><th>Db</th><th>Vételár</th><th>Ár</th><th>Érték</th><th>P&amp;L</th><th>Yield %</th><th>Évi osztalék</th><th>Súly</th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>
