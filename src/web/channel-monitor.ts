@@ -13,6 +13,7 @@ import {
   sendPromptToSession,
   startAgentProcess,
   stopAgentProcess,
+  dismissRemoteControlModalIfPresent,
 } from './agent-process.js'
 import { detectPaneState, decidePaneErrorAlert, type PaneErrorAlertState } from '../pane-state.js'
 import { MAIN_CHANNELS_SESSION, MAIN_CHANNELS_PLIST } from './main-agent.js'
@@ -431,6 +432,17 @@ export function startChannelPluginMonitor(): NodeJS.Timeout {
           provider: resolveAgentProvider(a),
         })
       }
+    }
+
+    // Remote Control / Continue modal release. The Claude mobile/web app's
+    // Remote Control feature pops a "Continue" modal that parks the pane --
+    // injected prompts land in the input line without submitting (same symptom
+    // as the paste-syndrome). Source-agnostic fix: scan every session's pane
+    // and send Enter when the modal text is present. Runs on the main channels
+    // session too -- it is a pure modal release (Enter only when the modal is
+    // actually on screen), never a restart.
+    for (const t of targets) {
+      dismissRemoteControlModalIfPresent(t.session)
     }
 
     // Pane-level thinking-block error detection. Independent of channel

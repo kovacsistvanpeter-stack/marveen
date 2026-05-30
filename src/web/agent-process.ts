@@ -310,6 +310,42 @@ function dismissResumeSummaryModalIfPresent(session: string): void {
   }
 }
 
+// The Claude mobile/web app's Remote Control feature pops a "Continue" modal
+// onto the TUI when a session is driven from / connected by another device. It
+// parks the pane: anything injected lands in the input line without submitting,
+// exactly like the paste-syndrome. The real modal looks like:
+//
+//     Remote Control
+//     This session is available in the Claude mobile app and at https://...
+//       Disconnect this session
+//       Show QR code
+//     ❯ Continue
+//     Enter to select · Esc to continue
+//
+// We send Enter, which selects the highlighted "❯ Continue" and closes it.
+//
+// Both markers are required so a session that merely prints "Esc to continue"
+// in some output, or shows the "Remote Control active" status line (which is
+// NOT a parked modal), is not mistaken for the modal and Enter'd by accident.
+// Pure release -- safe on the main channels session too, since it only fires
+// when the modal's own selectable "❯ Continue" option is actually on screen.
+const RC_MODAL_OPTION_RX = /❯\s*Continue\b/
+const RC_MODAL_FOOTER_RX = /Esc to continue/i
+
+export function dismissRemoteControlModalIfPresent(session: string): boolean {
+  try {
+    const pane = execSync(`${TMUX} capture-pane -t ${session} -p`, { timeout: 3000, encoding: 'utf-8' })
+    if (!RC_MODAL_OPTION_RX.test(pane) || !RC_MODAL_FOOTER_RX.test(pane)) return false
+    execFileSync(TMUX, ['send-keys', '-t', session, 'Enter'], { timeout: 5000 })
+    execFileSync('/bin/sleep', ['0.3'], { timeout: 2000 })
+    logger.info({ session }, 'Released Remote Control / Continue modal (sent Enter)')
+    return true
+  } catch (err) {
+    logger.warn({ err, session }, 'Failed to probe/dismiss Remote Control modal')
+    return false
+  }
+}
+
 // How many follow-up Enters sendPromptToSession() is willing to fire
 // when the post-send capture says the prompt is still parked in the
 // input box. Two retries cover the observed stuck-rate (single-pane
@@ -360,6 +396,7 @@ function clearInputBuffer(session: string): void {
 export function sendPromptToSession(session: string, text: string): void {
   dismissSurveyModalIfPresent(session)
   dismissResumeSummaryModalIfPresent(session)
+  dismissRemoteControlModalIfPresent(session)
 
   // Pre-flight buffer-clear when a stale preamble is detected. Reading
   // the pane is best-effort: a capture failure here means we cannot
