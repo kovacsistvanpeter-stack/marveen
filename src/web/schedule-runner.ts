@@ -309,7 +309,12 @@ export function startScheduleRunner(): NodeJS.Timeout {
           : [task.agent || MAIN_AGENT_ID]
         for (const agentName of agents) {
           if (pendingKeys.has(`${task.name}@${agentName}`)) continue
-          insertPendingTaskRetryIfNew(task.name, agentName, now, 'busy')
+          // Fire immediately on this first encounter, then queue so the retry
+          // handler watches for the marker. The queued row's last_attempt=now
+          // means the grace window applies only to the NEXT (re-)fire, not this
+          // one -- so the catch-up letter starts now, not 90 min from now.
+          const r = attemptFireTask(task, agentName, now)
+          insertPendingTaskRetryIfNew(task.name, agentName, now, r)
         }
         continue
       }
