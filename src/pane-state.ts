@@ -267,7 +267,7 @@ export function isReadyForPrompt(pane: string): boolean {
 // Returns null when the pane does not have a live input box (no idle
 // footer, only one separator, etc.) -- callers should treat null as
 // "not enough signal to act, do nothing".
-function liveInputBox(pane: string): string | null {
+export function liveInputBox(pane: string): string | null {
   const lines = pane.split('\n')
   const footerIdx = lines.findIndex(l => IDLE_FOOTER_RX.test(l))
   if (footerIdx < 0) return null

@@ -15,7 +15,7 @@ import {
   stopAgentProcess,
   dismissRemoteControlModalIfPresent,
 } from './agent-process.js'
-import { detectPaneState, decidePaneErrorAlert, type PaneErrorAlertState } from '../pane-state.js'
+import { detectPaneState, decidePaneErrorAlert, liveInputBox, type PaneErrorAlertState } from '../pane-state.js'
 import { MAIN_CHANNELS_SESSION, MAIN_CHANNELS_PLIST } from './main-agent.js'
 import { notifyChannel } from '../notify.js'
 import { getProvider, channelStateDir, readChannelToken, type ChannelProviderType } from '../channel-provider.js'
@@ -193,6 +193,21 @@ const SESSION_DEAD_CONFIRM_MS = 120_000  // 2 consecutive checks before restart
 const SESSION_MAX_RESTARTS = 3
 const SESSION_RESTART_WINDOW_MS = 15 * 60 * 1000
 const SESSION_ALERT_DEDUP_MS = 30 * 60 * 1000
+
+// Parked-input watchdog: a source-agnostic backstop for the paste-syndrome.
+// When something parks text in the prompt input without submitting -- the
+// Remote Control modal, a TUI busy-state swallow, or the inbound Telegram path
+// (which the Channels plugin drives, NOT our sendPromptToSession, so our 201~
+// fix never runs there) -- the text sits under the ❯ prompt unsent. We watch
+// every session's live input box and, only when the SAME text has sat parked
+// across the confirm window (proving it is not being actively typed), send
+// 201~ + C-m to submit it. The confirm window is the safety rail against
+// submitting a half-typed user message: any keystroke changes the box text and
+// resets the timer. The main channels session gets a longer window because a
+// false submit there is costlier (it drives the human Telegram channel).
+const parkedInputState: Map<string, { text: string; firstSeenAt: number }> = new Map()
+const PARKED_INPUT_CONFIRM_MS = 90_000          // sub-agents: ~1.5 check cycles unchanged
+const PARKED_INPUT_MAIN_CONFIRM_MS = 180_000    // main session: more conservative
 // Require the plugin to be continuously down for this long before triggering a
 // full agent restart. Two consecutive 60s check cycles = 120s. This prevents a
 // single transient blip (e.g. context compaction resetting MCP) from immediately
@@ -443,6 +458,47 @@ export function startChannelPluginMonitor(): NodeJS.Timeout {
     // actually on screen), never a restart.
     for (const t of targets) {
       dismissRemoteControlModalIfPresent(t.session)
+    }
+
+    // Parked-input watchdog. Source-agnostic backstop: if a prompt is sitting
+    // unsent in a session's input box and the SAME text has been parked there
+    // unchanged across the confirm window, submit it (201~ then C-m). The
+    // unchanged-text requirement is the safety rail -- a user actively typing
+    // changes the box and resets the timer, so we never submit a half-written
+    // message. detectPaneState()==='typing' already means "idle footer + text
+    // in the live input box" (not busy, not a modal), so we only act on a
+    // genuinely parked prompt.
+    for (const t of targets) {
+      const pane = capturePane(t.session)
+      if (!pane || detectPaneState(pane) !== 'typing') {
+        parkedInputState.delete(t.session)
+        continue
+      }
+      const box = liveInputBox(pane)?.trim()
+      if (!box) {
+        parkedInputState.delete(t.session)
+        continue
+      }
+      const now = Date.now()
+      const prev = parkedInputState.get(t.session)
+      if (!prev || prev.text !== box) {
+        // First sighting, or the text changed (user is still typing): start
+        // / restart the timer and wait for it to settle before acting.
+        parkedInputState.set(t.session, { text: box, firstSeenAt: now })
+        continue
+      }
+      const confirmMs = t.isMarveen ? PARKED_INPUT_MAIN_CONFIRM_MS : PARKED_INPUT_CONFIRM_MS
+      if (now - prev.firstSeenAt < confirmMs) continue
+      const label = t.isMarveen ? BOT_NAME : (t.agentName ?? t.session)
+      logger.warn({ session: t.session, agent: label, parkedForMs: now - prev.firstSeenAt },
+        'Prompt parked unsent in input box past confirm window -- submitting (201~ + C-m)')
+      try {
+        execFileSync(TMUX, ['send-keys', '-t', t.session, '-H', '1b', '5b', '32', '30', '31', '7e'], { timeout: 5000 })
+        execFileSync(TMUX, ['send-keys', '-t', t.session, 'C-m'], { timeout: 5000 })
+      } catch (err) {
+        logger.warn({ err, session: t.session }, 'Parked-input submit failed')
+      }
+      parkedInputState.delete(t.session)
     }
 
     // Pane-level thinking-block error detection. Independent of channel
