@@ -15,7 +15,7 @@ import {
   stopAgentProcess,
   dismissRemoteControlModalIfPresent,
 } from './agent-process.js'
-import { detectPaneState, decidePaneErrorAlert, liveInputBox, type PaneErrorAlertState } from '../pane-state.js'
+import { detectPaneState, decidePaneErrorAlert, detectParkedInput, type PaneErrorAlertState } from '../pane-state.js'
 import { MAIN_CHANNELS_SESSION, MAIN_CHANNELS_PLIST } from './main-agent.js'
 import { notifyChannel } from '../notify.js'
 import { getProvider, channelStateDir, readChannelToken, type ChannelProviderType } from '../channel-provider.js'
@@ -465,16 +465,14 @@ export function startChannelPluginMonitor(): NodeJS.Timeout {
     // unchanged across the confirm window, submit it (201~ then C-m). The
     // unchanged-text requirement is the safety rail -- a user actively typing
     // changes the box and resets the timer, so we never submit a half-written
-    // message. detectPaneState()==='typing' already means "idle footer + text
-    // in the live input box" (not busy, not a modal), so we only act on a
-    // genuinely parked prompt.
+    // message. detectParkedInput() accepts both a raw ❯ prompt AND a
+    // [Pasted text #N] stub (the common real case: Remote Control / Telegram
+    // bursts lift into a paste stub, which detectPaneState reads as 'busy' --
+    // so keying off 'typing' alone silently skipped exactly the inputs we most
+    // need to rescue), while still refusing to act during a real running turn.
     for (const t of targets) {
       const pane = capturePane(t.session)
-      if (!pane || detectPaneState(pane) !== 'typing') {
-        parkedInputState.delete(t.session)
-        continue
-      }
-      const box = liveInputBox(pane)?.trim()
+      const box = pane ? detectParkedInput(pane) : null
       if (!box) {
         parkedInputState.delete(t.session)
         continue

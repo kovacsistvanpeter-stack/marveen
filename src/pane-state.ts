@@ -284,6 +284,39 @@ export function liveInputBox(pane: string): string | null {
   return lines.slice(topSep + 1, bottomSep).join('\n')
 }
 
+// Detect a prompt that is parked unsent in the live input box and is safe to
+// auto-submit. Returns the parked box text, or null when nothing should be
+// submitted.
+//
+// This is broader than detectPaneState()==='typing' on purpose. The most
+// common real parked input is NOT raw text -- it is a `[Pasted text #N +X
+// chars]` placeholder (the Remote Control modal, the inbound Telegram path,
+// and any keystroke burst all lift into that stub). detectPaneState treats a
+// pending-paste stub as 'busy' so the *scheduler* won't pile a second prompt
+// on top; but for the parked-input WATCHDOG that stub is exactly what we must
+// submit. So here we accept either a raw ❯ prompt OR a [Pasted text] stub,
+// while still refusing to act during a genuine in-flight turn.
+//
+// Guards (any -> null, do not submit):
+//   - a real running turn (esc to interrupt / spinner+tokens BUSY_INDICATORS)
+//   - no idle footer (can't prove the box is the live one)
+//   - a wedged thinking-block error (handled elsewhere, alert-only)
+//   - no live input box, or the box holds neither raw text nor a paste stub
+export function detectParkedInput(pane: string): string | null {
+  if (!pane || !pane.trim()) return null
+  for (const rx of BUSY_INDICATORS) {
+    if (rx.test(pane)) return null
+  }
+  if (!IDLE_FOOTER_RX.test(pane)) return null
+  if (detectsThinkingBlockError(pane)) return null
+  const box = liveInputBox(pane)
+  if (!box) return null
+  const hasRawText = box.split('\n').some(l => PARKED_INPUT_RX.test(l))
+  const hasPasteStub = PENDING_PASTE_RX.test(box)
+  if (!hasRawText && !hasPasteStub) return null
+  return box.trim()
+}
+
 // Marker strings from prompt-safety.ts preambles. We do NOT import them
 // to keep this module dependency-free for unit testing; the markers
 // here are stable opening phrases pinned to the first sentence of each
