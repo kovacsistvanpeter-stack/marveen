@@ -32,6 +32,7 @@ import {
   isAgentRunning,
   isSessionReadyForPrompt,
   sendPromptToSession,
+  clearInputBuffer,
 } from './agent-process.js'
 import { MAIN_CHANNELS_SESSION } from './main-agent.js'
 import { sendTelegramMessage } from './telegram.js'
@@ -126,7 +127,18 @@ function attemptFireTask(task: ScheduledTask, agentName: string, now: number): '
         const stuck = /❯\s+\S/.test(pane) && pane.includes(marker)
         if (!stuck) return
         if (attempt >= 5) {
-          logger.warn({ task: task.name, session }, 'Scheduled prompt still stuck after 5 Enter retries -- giving up')
+          logger.warn({ task: task.name, session }, 'Scheduled prompt still stuck after 5 Enter retries -- giving up, clearing buffer')
+          // The prompt never submitted. Leaving the parked marker text in the
+          // input box is what lets the next scheduled prompt paste onto its
+          // stale tail (the paste-syndrome). Esc closes any open paste state,
+          // then Ctrl-U wipes the line so the next fire starts clean.
+          try {
+            execFileSync(TMUX, ['send-keys', '-t', session, 'Escape'], { timeout: 3000 })
+            execFileSync('/bin/sleep', ['0.1'], { timeout: 1000 })
+            clearInputBuffer(session)
+          } catch (err) {
+            logger.warn({ err, task: task.name, session }, 'Giving-up buffer clear failed')
+          }
           return
         }
         execFileSync(TMUX, ['send-keys', '-t', session, '-H', '1b', '5b', '32', '30', '31', '7e'], { timeout: 3000 })

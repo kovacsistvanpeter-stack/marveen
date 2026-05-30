@@ -363,7 +363,7 @@ const SUBMIT_RETRY_POLL_MS = '0.5'
 // Buffer-clear (Ctrl-U) used pre-flight when shouldClearTruncatedPreamble
 // flags a stale preamble. Sent as a single key name (no `-l` literal
 // flag) so tmux interprets it as the control sequence.
-function clearInputBuffer(session: string): void {
+export function clearInputBuffer(session: string): void {
   try {
     execFileSync(TMUX, ['send-keys', '-t', session, 'C-u'], { timeout: 5000 })
     // Settle briefly so the next send-keys lands in the freshly cleared
@@ -398,18 +398,30 @@ export function sendPromptToSession(session: string, text: string): void {
   dismissResumeSummaryModalIfPresent(session)
   dismissRemoteControlModalIfPresent(session)
 
-  // Pre-flight buffer-clear when a stale preamble is detected. Reading
-  // the pane is best-effort: a capture failure here means we cannot
-  // prove the buffer is clean, but proceeding without the clear is no
-  // worse than the pre-fix status quo.
-  try {
-    const preCapture = execSync(`${TMUX} capture-pane -t ${session} -p`, { timeout: 3000, encoding: 'utf-8' })
-    if (shouldClearTruncatedPreamble(preCapture)) {
-      logger.info({ session }, 'Cleared stale preamble from input buffer before sending prompt')
-      clearInputBuffer(session)
+  // Pre-flight buffer-clear when a stale preamble is detected. The pane read
+  // is retried once, because a single capture-pane failure used to skip the
+  // check entirely and let a fresh prompt concatenate onto a stale parked
+  // preamble (the paste-syndrome). If we still cannot read the pane, clear
+  // defensively: we cannot prove the buffer is clean, and an over-eager
+  // Ctrl-U is harmless (the prompt we are about to paste overwrites the line
+  // anyway) whereas leaving a stale tail in place corrupts the next message.
+  let preCapture: string | null = null
+  for (let attempt = 0; attempt < 2 && preCapture === null; attempt++) {
+    try {
+      preCapture = execSync(`${TMUX} capture-pane -t ${session} -p`, { timeout: 3000, encoding: 'utf-8' })
+    } catch (err) {
+      if (attempt === 0) {
+        try { execFileSync('/bin/sleep', ['0.1'], { timeout: 1000 }) } catch { /* best effort */ }
+      } else {
+        logger.warn({ err, session }, 'Pre-send capture-pane failed after retry; defensively clearing input buffer')
+      }
     }
-  } catch (err) {
-    logger.warn({ err, session }, 'Pre-send capture-pane failed; skipping truncated-preamble check')
+  }
+  if (preCapture === null) {
+    clearInputBuffer(session)
+  } else if (shouldClearTruncatedPreamble(preCapture)) {
+    logger.info({ session }, 'Cleared stale preamble from input buffer before sending prompt')
+    clearInputBuffer(session)
   }
 
   // Replace ASCII '@' with fullwidth '＠' (U+FF20) to prevent the Claude Code
@@ -460,7 +472,19 @@ export function sendPromptToSession(session: string, text: string): void {
     const action = decideSubmitFollowup(pane, payloadHint, attempt, SUBMIT_RETRY_MAX_ATTEMPTS)
     if (action === 'done') break
     if (action === 'give-up') {
-      logger.warn({ session, attempt }, 'sendPromptToSession: prompt still parked after retries')
+      logger.warn({ session, attempt }, 'sendPromptToSession: prompt still parked after retries -- clearing buffer to prevent next-prompt concatenation')
+      // The prompt never submitted and will not on its own. Leaving it parked
+      // in the input box is what lets the NEXT prompt paste onto its stale
+      // tail -- the paste-syndrome's "garbled/merged message" symptom. Esc
+      // closes any open paste/dropdown state, then Ctrl-U wipes the line so
+      // the next sendPromptToSession starts from an empty buffer.
+      try {
+        execFileSync(TMUX, ['send-keys', '-t', session, 'Escape'], { timeout: 5000 })
+        execFileSync('/bin/sleep', ['0.1'], { timeout: 2000 })
+        clearInputBuffer(session)
+      } catch (err) {
+        logger.warn({ err, session }, 'Giving-up buffer clear failed')
+      }
       break
     }
     // action === 'retry-enter'
