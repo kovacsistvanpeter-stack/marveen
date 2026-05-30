@@ -40,6 +40,15 @@ export interface ScheduledTask {
   // `agent-<name>` or MAIN_CHANNELS_SESSION. Enables dedicated
   // scheduler-only sessions in the future.
   targetSession?: string
+  // Idempotency marker for tasks that must NOT silently miss (e.g. the weekly
+  // Buffett letter). A filesystem path template; "{ISO_WEEK}" is replaced with
+  // the current ISO week ("2026-W22"). The task is considered done for the
+  // week ONLY when this file exists -- the task itself must write it after the
+  // real work succeeds (not when the prompt merely arrives). While the marker
+  // is absent and we are still inside the catch-up window (the cron's ISO week),
+  // the runner keeps re-attempting instead of treating a delivered-but-unrun
+  // prompt as success. Absent => no idempotency tracking (default behaviour).
+  completionMarker?: string
 }
 
 function readFileOr(path: string, fallback: string): string {
@@ -69,7 +78,7 @@ export function readScheduledTask(taskName: string): ScheduledTask | null {
   const skillContent = readFileOr(skillPath, '')
   const { name, description, body } = parseSkillMdFrontmatter(skillContent)
 
-  let config: { schedule?: string; agent?: string; enabled?: boolean; createdAt?: number; type?: string; skipIfBusy?: boolean; forceSend?: boolean; targetSession?: string } = {}
+  let config: { schedule?: string; agent?: string; enabled?: boolean; createdAt?: number; type?: string; skipIfBusy?: boolean; forceSend?: boolean; targetSession?: string; completionMarker?: string } = {}
   try {
     config = JSON.parse(readFileOr(configPath, '{}'))
   } catch { /* use defaults */ }
@@ -86,6 +95,7 @@ export function readScheduledTask(taskName: string): ScheduledTask | null {
     skipIfBusy: config.skipIfBusy === true,
     forceSend: config.forceSend === true,
     targetSession: config.targetSession || undefined,
+    completionMarker: config.completionMarker || undefined,
   }
 }
 

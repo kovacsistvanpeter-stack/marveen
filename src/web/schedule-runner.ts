@@ -22,6 +22,7 @@ import {
   wrapUntrusted,
 } from '../prompt-safety.js'
 import { cronMatchesNow } from './cron.js'
+import { markerSatisfied, catchupWindowOpen, cronDueThisIsoWeek } from './completion-marker.js'
 import {
   listScheduledTasks,
   type ScheduledTask,
@@ -55,6 +56,12 @@ const TMUX = resolveFromPath('tmux')
 // success. See sendPendingRetryAlert below.
 
 const scheduleLastRun: Map<string, number> = new Map()
+
+// For completion-marker (idempotent) tasks: after a fire whose marker has not
+// yet appeared, wait at least this long before re-firing. Gives the pipeline
+// time to run and write the marker, so we don't re-inject the prompt every
+// 60s tick (the weekly Buffett pipeline takes tens of minutes).
+const COMPLETION_REFIRE_GRACE_MS = 90 * 60_000
 
 // Try to fire a task at a single target agent. Returns the outcome so the
 // caller can decide whether to queue a retry. Splitting this out means the
@@ -240,6 +247,36 @@ export function startScheduleRunner(): NodeJS.Timeout {
       const key = `${row.task_name}@${row.agent_name}`
       pendingKeys.add(key)
 
+      // Completion-marker (idempotent) tasks: "done" means the marker file
+      // exists, NOT "the prompt was delivered". This is what stops a weekly
+      // letter that was delivered but never ran (lost to a wedge/restart) from
+      // being treated as success and dropped.
+      if (taskDef.completionMarker) {
+        if (markerSatisfied(taskDef.completionMarker, new Date(now))) {
+          deletePendingTaskRetry(row.task_name, row.agent_name)  // letter actually went out
+          continue
+        }
+        if (!catchupWindowOpen(row.first_attempt, now)) {
+          // Crossed into the next ISO week without the marker -- the catch-up
+          // window has closed; drop the stale attempt (next cron opens a fresh
+          // one) so a missed week never bleeds into the following week.
+          logger.warn({ task: row.task_name, agent: row.agent_name }, 'Completion-marker catch-up window closed (new ISO week), dropping stale retry')
+          deletePendingTaskRetry(row.task_name, row.agent_name)
+          continue
+        }
+        // Marker absent, window open: re-fire only after the grace period so
+        // the pipeline has time to run + write the marker (no prompt-spam).
+        if (now - row.last_attempt < COMPLETION_REFIRE_GRACE_MS) {
+          continue
+        }
+        const r = attemptFireTask(taskDef, row.agent_name, now)
+        // NEVER delete on 'fired' here -- only the marker closes it out.
+        updatePendingTaskRetry(row.task_name, row.agent_name, now, r)
+        const mview = toPendingRetryView(row, now)
+        if (mview.alertDue) sendPendingRetryAlert(mview, now)
+        continue
+      }
+
       const view = toPendingRetryView(row, now)
       const result = attemptFireTask(taskDef, row.agent_name, now)
       if (result === 'fired' || result === 'missing') {
@@ -257,6 +294,26 @@ export function startScheduleRunner(): NodeJS.Timeout {
 
     for (const task of tasks) {
       if (!task.enabled) continue
+
+      // Completion-marker (idempotent) tasks decide "should I run this week?"
+      // by the marker + ISO-week window, NOT by the exact cron minute -- so a
+      // tick missed entirely (dashboard down at the cron minute) is still
+      // recovered later the same week. If the marker exists, done; else if the
+      // cron was due this ISO week and it isn't queued yet, queue it (the retry
+      // handler drives the fire + grace + re-fire from there).
+      if (task.completionMarker) {
+        if (markerSatisfied(task.completionMarker, new Date(now))) continue
+        if (!cronDueThisIsoWeek(task.schedule, now)) continue
+        const agents = task.agent === 'all'
+          ? [MAIN_AGENT_ID, ...listAgentNames().filter(a => isAgentRunning(a))]
+          : [task.agent || MAIN_AGENT_ID]
+        for (const agentName of agents) {
+          if (pendingKeys.has(`${task.name}@${agentName}`)) continue
+          insertPendingTaskRetryIfNew(task.name, agentName, now, 'busy')
+        }
+        continue
+      }
+
       if (!cronMatchesNow(task.schedule, catchUp)) continue
 
       // Prevent double-firing: skip if already ran within the catch-up window
