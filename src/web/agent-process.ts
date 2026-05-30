@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, mkdirSync, writeFileSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { execSync, execFileSync } from 'node:child_process'
@@ -244,6 +244,43 @@ export function stopAgentProcess(name: string): { ok: boolean; error?: string } 
     logger.error({ err, name, session }, 'Failed to stop agent tmux session')
     return { ok: false, error: 'Failed to stop tmux session' }
   }
+}
+
+// Restart an agent WITHOUT --continue by hiding its prior session dir first.
+// Use this when the session is wedged on a corrupt session-history (the
+// thinking-block "blocks cannot be modified" 400 that repeats on every prompt):
+// a plain stop+start re-adds --continue and reloads the same corrupt history,
+// re-wedging instantly. Moving the project dir aside forces a fresh session.
+// The corrupt history is preserved as a `.bak-<ts>` dir (never deleted -- the
+// operator decides) so it can be inspected.
+export function cleanRestartAgent(name: string): { ok: boolean; error?: string } {
+  // Stop first (ignore "not running" -- we still want to clear the dir + start).
+  stopAgentProcess(name)
+  try { execFileSync('/bin/sleep', ['2'], { timeout: 4000 }) } catch { /* best effort */ }
+
+  // Hide the prior session dir so startAgentProcess() omits --continue. The
+  // path mirrors startAgentProcess()'s own resolution exactly.
+  try {
+    const claudeConfigDir = readAgentClaudeConfigDir(name)
+    const projectsRoot = claudeConfigDir
+      ? join(claudeConfigDir, 'projects')
+      : join(homedir(), '.claude', 'projects')
+    const projectDir = join(projectsRoot, agentDir(name).replace(/\//g, '-'))
+    if (existsSync(projectDir)) {
+      const bak = `${projectDir}.bak-${Date.now()}`
+      renameSync(projectDir, bak)
+      logger.warn({ name, bak }, 'cleanRestartAgent: moved corrupt session dir aside (no --continue on restart)')
+    }
+  } catch (err) {
+    logger.error({ err, name }, 'cleanRestartAgent: failed to move session dir; aborting to avoid --continue re-wedge')
+    return { ok: false, error: 'Failed to move prior session dir' }
+  }
+
+  const start = startAgentProcess(name)
+  if (!start.ok) {
+    logger.error({ name, error: start.error }, 'cleanRestartAgent: start failed')
+  }
+  return { ok: start.ok, error: start.error }
 }
 
 export function getAgentProcessInfo(name: string): { running: boolean; session?: string } {

@@ -13,6 +13,7 @@ import {
   sendPromptToSession,
   startAgentProcess,
   stopAgentProcess,
+  cleanRestartAgent,
   dismissRemoteControlModalIfPresent,
 } from './agent-process.js'
 import { detectPaneState, decidePaneErrorAlert, detectParkedInput, type PaneErrorAlertState } from '../pane-state.js'
@@ -230,6 +231,17 @@ const paneErrorState: Map<string, PaneErrorAlertState> = new Map()
 const PANE_ERROR_CONFIRM_MS = 120_000
 const PANE_ERROR_DEDUP_MS = 30 * 60 * 1000
 const PANE_ERROR_CLEAR_MS = 5 * 60 * 1000
+
+// Thinking-block clean-restart guard. When a sub-agent is confirmed wedged on
+// the corrupt-history thinking-block 400, a plain --continue restart just
+// reloads the same corrupt history and re-wedges -- so we clean-restart it
+// (project dir moved aside, fresh session). Bounded so a session that keeps
+// landing in 'error' even after a fresh start does not restart-loop forever;
+// past the cap we fall back to alert-only and leave it for a human.
+interface ThinkingBlockBucket { count: number; windowStart: number }
+const thinkingBlockRestartBucket: Map<string, ThinkingBlockBucket> = new Map()
+const THINKING_BLOCK_MAX_RESTARTS = 2
+const THINKING_BLOCK_RESTART_WINDOW_MS = 30 * 60 * 1000
 
 type MarveenRecoveryStage = 'soft' | 'save' | 'resume' | 'hard' | 'gave_up'
 interface MarveenDownState {
@@ -519,8 +531,37 @@ export function startChannelPluginMonitor(): NodeJS.Timeout {
       }
       if (decision.alert) {
         const label = t.isMarveen ? BOT_NAME : (t.agentName ?? t.session)
-        logger.error({ session: t.session, agent: label }, 'Agent wedged on thinking-block API error -- manual reset needed')
-        sendAlert(`🚨 A(z) ${label} agens elakadt egy thinking-block API hibaban (a session-history korrupt, minden uj prompt ugyanazt a 400-at adja). Kezi reset kell: allitsd le es inditsd ujra, friss session indul. Reszletek: tmux attach -t ${t.session}`)
+        logger.error({ session: t.session, agent: label }, 'Agent wedged on thinking-block API error')
+        // Sub-agents: auto-recover with a CLEAN restart (no --continue). A
+        // plain restart would reload the corrupt history and re-wedge, so the
+        // session dir is moved aside and a fresh session is started. The main
+        // channels session is never auto-restarted -- killing it drops the live
+        // human Telegram channel, so it stays alert-only + escalation.
+        if (!t.isMarveen && t.agentName) {
+          const now = Date.now()
+          let bucket = thinkingBlockRestartBucket.get(t.agentName)
+          if (!bucket || now - bucket.windowStart > THINKING_BLOCK_RESTART_WINDOW_MS) {
+            bucket = { count: 0, windowStart: now }
+          }
+          if (bucket.count >= THINKING_BLOCK_MAX_RESTARTS) {
+            thinkingBlockRestartBucket.set(t.agentName, bucket)
+            sendAlert(`🚨 A(z) ${label} agens ${THINKING_BLOCK_MAX_RESTARTS}x clean-restartolt thinking-block hibara ${Math.round(THINKING_BLOCK_RESTART_WINDOW_MS / 60000)} percen belul, de ujra elakadt -- kezi beavatkozas kell. tmux attach -t ${t.session}`)
+          } else {
+            bucket.count++
+            thinkingBlockRestartBucket.set(t.agentName, bucket)
+            logger.warn({ agent: t.agentName, attempt: bucket.count }, 'Thinking-block wedge -- clean-restarting agent (no --continue)')
+            sendAlert(`🔧 A(z) ${label} agens thinking-block hibaban ragadt (korrupt session-history). Clean restart inditom (--continue nelkul, friss session). A korrupt history .bak-ba mentve.`)
+            try {
+              cleanRestartAgent(t.agentName)
+              agentLastRestart.set(t.agentName, now)
+            } catch (err) {
+              logger.error({ err, agent: t.agentName }, 'Thinking-block clean-restart failed')
+            }
+            paneErrorState.delete(t.session)
+          }
+        } else {
+          sendAlert(`🚨 A(z) ${label} agens elakadt egy thinking-block API hibaban (a session-history korrupt, minden uj prompt ugyanazt a 400-at adja). Kezi reset kell: allitsd le es inditsd ujra, friss session indul. Reszletek: tmux attach -t ${t.session}`)
+        }
       }
     }
 
